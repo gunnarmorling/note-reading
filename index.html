@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Note reading</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <div class="bar">
+        <h1>Note reading</h1>
+
+        <!-- Everything you set, on one line and in two groups: which deck,
+             then what it asks for. The decks are split buttons — the deck is
+             the button, and its caret opens what that deck has to set up,
+             anchored to the button so opening it covers the page rather than
+             pushing it down. -->
+        <div class="middle">
+          <div class="decks">
+            <span id="name-split" class="deck-split">
+              <button id="name-deck" class="deck" type="button" aria-pressed="true">
+                Name the notes
+              </button>
+              <button
+                id="name-open"
+                class="deck-caret"
+                type="button"
+                popovertarget="name-menu"
+                aria-expanded="false"
+                title="Options for naming"
+              ></button>
+
+              <div id="name-menu" class="popmenu" popover>
+                <p class="menu-head">Sound</p>
+                <label class="setting-check" for="sound">
+                  <input id="sound" type="checkbox" /> Hear the note when I answer
+                </label>
+              </div>
+            </span>
+
+            <span id="play-split" class="deck-split">
+              <button id="play-deck" class="deck" type="button" aria-pressed="false">
+                Play the notes
+              </button>
+              <button
+                id="play-open"
+                class="deck-caret"
+                type="button"
+                popovertarget="play-menu"
+                aria-expanded="false"
+                title="What to play into"
+              ></button>
+
+              <!-- A choice, not a readout: whichever row is lit is the one
+                   answering. They were two lines of status that looked like
+                   options, which left no way to say "use the microphone" when
+                   a MIDI keyboard was also plugged in. -->
+              <div id="play-menu" class="popmenu" popover>
+                <p class="menu-head">Playing into</p>
+                <button id="use-midi" class="source-row" type="button">
+                  <span class="source-label">MIDI keyboard</span>
+                  <span id="midi-status" class="source-what"></span>
+                </button>
+                <button id="use-mic" class="source-row" type="button">
+                  <span class="source-label">Microphone</span>
+                  <span id="mic-status" class="source-what"></span>
+                  <span id="mic-level" hidden>
+                    <span class="meter">
+                      <span id="mic-fill" class="meter-fill"></span>
+                      <span id="mic-mark" class="meter-mark"></span>
+                    </span>
+                  </span>
+                </button>
+                <button id="tune" class="toggle" type="button" title="Turn the microphone on first">
+                  Tune to my piano
+                </button>
+                <p id="tuning-result" class="source-alt" hidden></p>
+              </div>
+            </span>
+          </div>
+
+          <!-- What the drill asks for, behind a rule: the same bar, the other
+               group. Left to right in the order they compose — clef, then how
+               far past it, then the two pitch limits. -->
+          <div class="controls">
+            <span class="setting">
+              <label for="clefs">Clef</label>
+              <select id="clefs">
+                <option value="both">Both</option>
+                <option value="treble">Treble</option>
+                <option value="bass">Bass</option>
+              </select>
+            </span>
+            <span class="setting">
+              <label for="ledgers">Range</label>
+              <select id="ledgers">
+                <option value="0">On the staff</option>
+                <option value="1">One ledger</option>
+                <option value="2">Two ledgers</option>
+              </select>
+            </span>
+            <span class="setting">
+              <label for="lowest">Lowest</label>
+              <select id="lowest"></select>
+            </span>
+            <span class="setting">
+              <label for="highest">Highest</label>
+              <select id="highest"></select>
+            </span>
+          </div>
+        </div>
+
+        <div class="bar-end">
+          <button
+            id="player-button"
+            class="chip"
+            type="button"
+            popovertarget="player-menu"
+            aria-expanded="false"
+          >
+            <span id="player-name">Player</span>
+          </button>
+          <div id="player-menu" class="popmenu" popover>
+            <p class="menu-head">Who is practising</p>
+            <div id="player-list"></div>
+            <button id="player-add" class="menu-item" type="button">Add player…</button>
+            <button id="player-rename" class="menu-item" type="button">Rename…</button>
+
+            <p class="menu-head">The record</p>
+            <button id="history-export" class="menu-item" type="button">Export…</button>
+            <label class="menu-item" for="history-import">Import…</label>
+            <input id="history-import" type="file" accept="application/json,.json" />
+            <button id="reset" class="menu-item" type="button">Start over</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="name-form" class="bar bar-settings" hidden>
+        <label for="name-input">Name</label>
+        <input id="name-input" type="text" maxlength="40" autocomplete="off" />
+        <button id="name-save" class="toggle" type="button">Save</button>
+        <button id="name-cancel" class="toggle" type="button">Cancel</button>
+      </div>
+    </header>
+
+    <main>
+      <div class="drill">
+        <div class="sheet">
+          <svg id="staff" class="stave" viewBox="-4 -12 268 124" role="img" aria-label="A single note on a grand staff"></svg>
+        </div>
+
+        <p id="verdict" class="verdict" role="status" aria-live="polite"></p>
+
+        <div class="keyboard">
+          <div id="answers"></div>
+          <div class="black-keys" aria-hidden="true">
+            <span class="black-key" style="left: 10.5%"></span>
+            <span class="black-key" style="left: 24.8%"></span>
+            <span class="black-key" style="left: 53.4%"></span>
+            <span class="black-key" style="left: 67.6%"></span>
+            <span class="black-key" style="left: 81.9%"></span>
+          </div>
+        </div>
+
+        <div id="tuning" hidden>
+          <p id="tuning-prompt"></p>
+          <div id="tuning-keys" class="sheet"></div>
+          <p class="tuning-hint">The dot is middle C. Black keys are only there to find your place by.</p>
+          <button id="tuning-stop" class="toggle" type="button">Stop tuning</button>
+        </div>
+      </div>
+
+      <!-- The record. One panel, four spans: the session is simply the first
+           of them, which is what the Show history button and its Over
+           dropdown were between them saying less clearly. -->
+      <aside class="record">
+        <div id="tabstrip" class="tabstrip" role="tablist"></div>
+        <p id="stats" class="panel-sum"></p>
+        <p id="stats-vs" class="panel-vs"></p>
+        <div id="breakdown" class="rows"></div>
+        <p id="breakdown-key" class="panel-key" hidden></p>
+      </aside>
+
+      <section class="cheat-row">
+        <button
+          id="cheat-toggle"
+          class="drawer-head"
+          type="button"
+          aria-expanded="false"
+          aria-controls="cheat-sheet"
+        >
+          Cheat sheet <span id="cheat-count" class="drawer-note"></span>
+        </button>
+        <div id="cheat-sheet" hidden></div>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        Press C to H on your keyboard, or click. Connect a MIDI keyboard in Chrome,
+        or let it listen to an acoustic piano, and you can answer by playing the
+        note instead — octave included.
+      </p>
+    </footer>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

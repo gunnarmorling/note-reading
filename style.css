@@ -1,0 +1,921 @@
+/* A jazz record's palette: a warm black room, one lit cream sheet, and red
+   and orange for everything that has to catch the eye. No blue, no serif in
+   the chrome — the serif survives only in the note names printed on the
+   paper, where a serif belongs.
+   Red and orange carry meaning rather than decorating: a slow note's bar is
+   deep red and shrinks toward the line to beat, a note inside it turns amber,
+   a wrong answer is red and a right one amber. */
+
+:root {
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --serif: "Iowan Old Style", Palatino, "Book Antiqua", Georgia, serif;
+
+  --night: #14100c;
+  --surface: #1d1813;
+  --raised: #29211a;
+  --hair: rgba(255, 228, 196, 0.12);
+  --edge: transparent;
+  --text: #f6ebdc;
+  --muted: #b3a291;
+  --faint: #857667;
+  --hot: #a0402c;
+  --hot-lit: #d76a4c;
+  --warm: #e8a44e;
+  --warm-lit: #f5c07a;
+
+  /* The sheet, and what is printed on it. Brighter than the room is dim: the
+     one surface you actually read has to be lit. */
+  --paper: #f4ece0;
+  --ink: #241a12;
+  --ink-faint: #b8a78e;
+  /* Feedback has to read on cream, where amber and red both do and the
+     lighter versions used on black do not. */
+  --ink-right: #8a6415;
+  --ink-wrong: #9e3324;
+
+  --radius: 7px;
+  --pad-y: 8px;
+  --pad-x: 15px;
+  --title-size: 15px;
+  --title-track: 0.10em;
+  --rhythm: 22px;
+  --control-fill: rgba(255, 228, 196, 0.07);
+  --control-fill-hover: rgba(255, 228, 196, 0.13);
+  --numerals: var(--sans);
+}
+
+/* ========================================================================
+   Shared structure. One rule per thing, every colour and measure a token.
+   ======================================================================== */
+
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+:focus-visible {
+  outline: 2px solid var(--warm);
+  outline-offset: 2px;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--night);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* --- header -------------------------------------------------------------- */
+
+header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--hair);
+}
+
+/* Full width, unlike the page below it: the title belongs at the left edge of
+   the window and the player at the right, which a bar capped to the content
+   column cannot do — it left both of them a couple of hundred pixels adrift
+   on a wide screen. The gutter is the only thing they share with the page. */
+.bar {
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+/* Small, heavy and tracked rather than large and quiet: at this size the
+   letterspacing is doing the work a serif used to be asked to do. */
+h1 {
+  margin: 0;
+  white-space: nowrap;
+  font-size: var(--title-size);
+  font-weight: 700;
+  letter-spacing: var(--title-track);
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.bar-end {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Everything you set, between the title and the player: which deck, a rule,
+   and what the drill asks for. One bar rather than two, because the second
+   was a strip of four selects with nothing else on it — and it wraps to a
+   second line by itself when the window cannot hold one. */
+.middle {
+  flex: 1;
+  display: flex;
+  /* Bottom-aligned, not centred: the fields carry a caption above them and
+     the decks do not, so centring left the two groups' buttons sitting at
+     different heights. Their bottom edges are the line they share. */
+  align-items: flex-end;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.controls {
+  display: flex;
+  align-items: flex-end;
+  align-self: stretch;
+  gap: 6px 14px;
+  flex-wrap: wrap;
+  padding-left: 15px;
+  border-left: 1px solid var(--hair);
+}
+
+/* All that is left on a bar of its own: the rename form, which appears for
+   as long as it takes to type a name. */
+.bar-settings {
+  padding-top: 0;
+  padding-bottom: 12px;
+  gap: 9px;
+}
+
+/* Label above its control, not beside it. Beside it, the four fields wanted
+   about 515px and pushed the decks onto a line of their own; stacked they
+   want about 320, which is what lets one bar hold the lot. It is also the
+   tidier arrangement: a caps label is a caption, and captions sit above. */
+.setting {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+/* Field labels are the quietest type on the page: the eye can skip them
+   entirely once the drill is running. Scoped to the bar they belong to — as a
+   bare element selector this reached every label on the page, and set the
+   sound checkbox and the Import item in tracked capitals. */
+.controls label,
+.bar-settings label {
+  color: var(--faint);
+  font-size: 10px;
+  line-height: 1.3;
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+}
+
+/* --- controls: filled, not outlined -------------------------------------- */
+
+select,
+.toggle,
+.deck,
+.deck-caret,
+.chip {
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.3;
+  color: var(--muted);
+  background: var(--control-fill);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  padding: var(--pad-y) var(--pad-x);
+  cursor: pointer;
+  transition:
+    color 0.13s ease,
+    background-color 0.13s ease,
+    border-color 0.13s ease;
+}
+
+select {
+  color: var(--text);
+}
+
+select:hover,
+.toggle:hover,
+.chip:hover,
+.deck:hover,
+.deck-caret:hover {
+  color: var(--text);
+  background: var(--control-fill-hover);
+}
+
+.chip::after {
+  content: " ▾";
+  color: var(--faint);
+}
+
+.decks {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.deck-split {
+  position: relative;
+  display: inline-flex;
+}
+
+.deck-split .deck {
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+
+/* The deck you are on is lit rather than inverted: a tint of the accent, its
+   own colour for the text, and a rule under it. */
+.deck[aria-pressed="true"] {
+  color: var(--warm-lit);
+  background: color-mix(in oklab, var(--warm) 18%, transparent);
+  box-shadow: inset 0 -2px 0 var(--warm);
+}
+
+.deck-caret {
+  border-radius: 0 var(--radius) var(--radius) 0;
+  border-left: none;
+  padding-left: 9px;
+  padding-right: 9px;
+  font-size: 10px;
+}
+
+.deck-caret::before {
+  content: "▾";
+}
+
+.deck-caret[aria-expanded="true"] {
+  color: var(--text);
+}
+
+.deck-caret[aria-expanded="true"]::before {
+  content: "▴";
+}
+
+/* --- the menu that hangs off a deck -------------------------------------- */
+
+.popmenu {
+  /* Shut unless something says otherwise. Not left to the UA's own
+     [popover]:not(:popover-open) { display: none }, which is an
+     author-beatable rule — the same trap [hidden] sets above, and the reason
+     every menu once showed at once: a display declared here outranks it. */
+  display: none;
+  /* Drawn in the browser's top layer, which is the whole reason for a
+     popover: it cannot be laid out in the flow of the page, cannot be clipped
+     by an ancestor, and needs no z-index. The cost is that the top layer is
+     not laid out by the page either — the UA centres a popover in the window
+     -- so app.js places each one under the button it belongs to. */
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  min-width: 220px;
+  padding: 12px 14px;
+  background: var(--raised);
+  border: 1px solid var(--hair);
+  border-radius: var(--radius);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.6);
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+}
+
+/* Open, either way: the browser's own state where there is a top layer, and
+   a class where the fallback is hiding and showing it in place. */
+.popmenu:popover-open,
+.popmenu.is-open {
+  display: flex;
+}
+
+/* Two labelled rows and a level meter need more room than one checkbox. */
+#play-menu {
+  min-width: 360px;
+}
+
+/* A row you can pick, laid out like a menu item with a label column. */
+.source-row {
+  font: inherit;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-radius: calc(var(--radius) / 2);
+  padding: 5px 7px;
+  margin: 0 -7px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    color 0.13s ease,
+    background-color 0.13s ease;
+}
+
+.source-row:hover:not(:disabled) {
+  background: var(--control-fill-hover);
+}
+
+/* The one that is actually feeding the drill. */
+.source-row[aria-current="true"] {
+  background: color-mix(in oklab, var(--warm) 14%, transparent);
+}
+
+.source-row[aria-current="true"] .source-what {
+  color: var(--warm-lit);
+}
+
+.source-row:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+/* A label column, so the two sources read as a pair of alternatives — and in
+   the same type as a menu item, since that is what a row is. */
+.source-label {
+  min-width: 8.4em;
+  color: var(--faint);
+  font-size: 13px;
+}
+
+.source-what {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.source-what.is-off {
+  color: var(--faint);
+}
+
+#mic-level {
+  flex: 1;
+  min-width: 70px;
+  max-width: 170px;
+}
+
+.meter {
+  position: relative;
+  display: block;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.10);
+  border-radius: calc(var(--radius) / 2);
+}
+
+.meter-fill {
+  display: block;
+  height: 100%;
+  background: var(--warm);
+}
+
+.meter-mark {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: var(--hot-lit);
+}
+
+.source-alt {
+  margin: 2px 0 0;
+  color: var(--faint);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* Sounding the note back: a setting, in the naming deck's own menu. */
+.setting-check {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.setting-check input {
+  accent-color: var(--warm);
+}
+
+/* Every menu has the same anatomy: a section heading in the page's quietest
+   type, then rows. Without it the player's menu was bare text on a panel and
+   the two decks' menus looked like different kinds of thing — one a row of
+   tracked-caps labels, the other a lone sentence. */
+.menu-head {
+  margin: 0;
+  color: var(--faint);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.menu-head:not(:first-child) {
+  margin-top: 9px;
+}
+
+#player-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.menu-item {
+  font: inherit;
+  font-size: 13px;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-radius: calc(var(--radius) / 2);
+  padding: 4px 7px;
+  margin: 0 -7px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    color 0.13s ease,
+    background-color 0.13s ease;
+}
+
+.menu-item:hover {
+  color: var(--text);
+  background: var(--control-fill-hover);
+}
+
+/* The player you are. A tick would need a column of its own; lit is enough. */
+.menu-item[aria-current="true"] {
+  color: var(--warm-lit);
+}
+
+label.toggle,
+label.menu-item {
+  cursor: pointer;
+}
+
+/* The file input hides behind its own label, which is styled as a menu item;
+   a bare file input cannot be. */
+#history-import {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Renaming and adding a player, under the settings bar. */
+#name-form {
+  gap: 9px;
+}
+
+#name-input {
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--text);
+  background: var(--control-fill);
+  border: 1px solid var(--hair);
+  border-radius: var(--radius);
+  padding: var(--pad-y) var(--pad-x);
+}
+
+/* --- the page ------------------------------------------------------------ */
+
+main {
+  width: 100%;
+  max-width: 1044px;
+  margin: 0 auto;
+  padding: var(--rhythm) 20px 44px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: var(--rhythm) 44px;
+  align-items: start;
+}
+
+.drill {
+  max-width: 600px;
+}
+
+/* The sheet is the only light surface on the page, and needs no shadow to
+   say so on a black ground. */
+.sheet {
+  background: var(--paper);
+  padding: 20px 22px;
+  border-radius: var(--radius);
+}
+
+.stave {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.stave .rule,
+.stave .clef,
+.stave .notehead {
+  fill: var(--ink);
+}
+
+/* Note names under the cheat sheet's staves, in user units — so they scale
+   with the engraving, and are given two units more than the drill's own type
+   would need to survive being drawn at two thirds the size. */
+.stave .note-label {
+  fill: var(--ink);
+  font-family: var(--serif);
+  font-size: 13px;
+  text-anchor: middle;
+}
+
+.stave .rule.is-out,
+.stave .notehead.is-out,
+.stave .note-label.is-out {
+  fill: var(--ink-faint);
+}
+
+#staff .notehead.is-correct {
+  fill: var(--ink-right);
+}
+
+#staff .notehead.is-wrong {
+  fill: var(--ink-wrong);
+}
+
+.verdict {
+  min-height: 1.6em;
+  margin: 18px 0 10px;
+  text-align: center;
+  font-size: 16px;
+  color: var(--muted);
+}
+
+.verdict.is-correct {
+  color: var(--warm-lit);
+}
+
+.verdict.is-wrong {
+  color: var(--hot-lit);
+}
+
+/* --- the answer keys ----------------------------------------------------- */
+
+.keyboard {
+  position: relative;
+  margin: 0 auto;
+  max-width: 420px;
+}
+
+#answers {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+
+.answer {
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--paper);
+  border: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.18);
+  height: 104px;
+  padding-bottom: 12px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.answer:hover {
+  background: color-mix(in oklab, var(--paper) 88%, var(--warm));
+}
+
+/* Drawn but not an answer: the playing deck is answered on the instrument,
+   and a letter cannot say which octave. Still legible, because which letter
+   sits where is worth seeing either way. */
+#answers.is-idle .answer {
+  opacity: 0.4;
+  cursor: default;
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.18);
+}
+
+#answers.is-idle .answer:hover {
+  background: var(--paper);
+}
+
+.answer.is-pressed {
+  background: color-mix(in oklab, var(--paper) 70%, var(--warm));
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+}
+
+.black-keys {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.black-key {
+  position: absolute;
+  top: 0;
+  width: 7.6%;
+  height: 64%;
+  background: var(--night);
+  border-radius: 0 0 2px 2px;
+}
+
+/* --- the record --------------------------------------------------------- */
+
+.record {
+  min-width: 0;
+}
+
+.tabstrip {
+  display: flex;
+  border-bottom: 1px solid var(--hair);
+}
+
+.tabstrip button {
+  flex: 1;
+  font: inherit;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--faint);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: 8px 2px;
+  cursor: pointer;
+}
+
+.tabstrip button:hover {
+  color: var(--muted);
+}
+
+.tabstrip button[aria-selected="true"] {
+  color: var(--text);
+  border-bottom-color: var(--hot);
+}
+
+.panel-sum {
+  margin: 16px 0 3px;
+  color: var(--text);
+  font-size: 15px;
+  font-family: var(--numerals);
+  font-variant-numeric: tabular-nums;
+}
+
+.panel-vs {
+  margin: 0 0 16px;
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bar-row {
+  display: grid;
+  grid-template-columns: 2.4em 1fr 2.4em 2.8em 3.2em;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  font-family: var(--numerals);
+  color: var(--muted);
+}
+
+.bar-name {
+  color: var(--text);
+  font-family: var(--sans);
+  font-weight: 500;
+}
+
+.bar-count,
+.bar-accuracy,
+.bar-time {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.bar-count,
+.bar-accuracy {
+  color: var(--faint);
+}
+
+.bar-track {
+  position: relative;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+/* Slow is red and shrinks toward the line; inside it, the note turns amber. */
+.bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--hot);
+}
+
+.bar-fill.is-fluent {
+  background: var(--warm);
+}
+
+.bar-time.is-fluent {
+  color: var(--warm-lit);
+}
+
+.bar-mark {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 1px;
+  background: var(--text);
+  opacity: 0.55;
+}
+
+.panel-key {
+  margin: 16px 0 0;
+  color: var(--faint);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* --- the cheat sheet, downstairs ---------------------------------------- */
+
+.cheat-row {
+  grid-column: 1 / -1;
+}
+
+.drawer-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font: inherit;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--hair);
+  padding: 11px 0;
+  cursor: pointer;
+}
+
+.drawer-head::before {
+  content: "▾";
+  font-size: 9px;
+  color: var(--hot-lit);
+}
+
+.drawer-note {
+  color: var(--faint);
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+
+#cheat-sheet {
+  margin-top: 4px;
+  display: grid;
+  gap: 18px;
+}
+
+/* The reference takes the whole row and is engraved smaller for it: its
+   system is 888 user units against the drill's 308, so the same paper width
+   draws it at about two thirds the size. That is the right way round — you
+   read it between notes rather than while answering one — and it is what
+   gives 29 notes room to sit side by side without their ledger lines
+   touching. It is not capped to a fraction of the drill's scale: the width it
+   needs is set by the engraving, not by a ratio. */
+
+/* On a phone the engraving is held at a legible width and the paper scrolls. */
+#cheat-sheet .sheet {
+  overflow-x: auto;
+}
+
+#cheat-sheet .stave {
+  min-width: 720px;
+}
+
+.cheat-clef {
+  margin: 0 0 7px;
+  color: var(--faint);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+/* --- the keyboard diagram ------------------------------------------------ */
+
+/* The other half of the answer: which key a note is. Drawn on the same sheet
+   as the staves, so it is lit the same way. */
+.keys {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* Twenty-nine keys shrunk to a phone are unreadable; the paper scrolls. */
+  min-width: 430px;
+}
+
+.key {
+  fill: var(--paper);
+  stroke: var(--ink-faint);
+  stroke-width: 0.6;
+}
+
+/* In play at the current settings. The staves fade what is excluded, because
+   there the default is ink; here the default is a white key, so it is the
+   inclusions that show. */
+.key.is-in-range {
+  fill: #ecd9b4;
+}
+
+.key.is-marked {
+  fill: var(--ink-wrong);
+}
+
+.key-black {
+  fill: var(--ink);
+}
+
+.key-label {
+  fill: #6d5b46;
+  font-family: var(--serif);
+  font-size: 10px;
+  text-anchor: middle;
+}
+
+.key-label.is-marked {
+  fill: var(--ink-wrong);
+  font-size: 11px;
+}
+
+.key-dot {
+  fill: #6d5b46;
+}
+
+/* --- tuning ------------------------------------------------------------- */
+
+#tuning {
+  margin: 16px 0 0;
+  text-align: center;
+}
+
+#tuning-prompt {
+  margin: 0 0 11px;
+  font-size: 16px;
+  color: var(--text);
+}
+
+#tuning-keys {
+  overflow-x: auto;
+}
+
+.tuning-hint {
+  margin: 9px 0 13px;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+#tuning-result {
+  margin: 12px 0 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.toggle:disabled {
+  opacity: 0.4;
+  cursor: default;
+  color: var(--faint);
+}
+
+footer {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 0 20px 40px;
+  color: var(--faint);
+  font-size: 11px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  .middle {
+    justify-content: flex-start;
+  }
+
+  .controls {
+    padding-left: 0;
+    border-left: none;
+  }
+
+  main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .drill {
+    max-width: none;
+  }
+
+  #cheat-sheet > .sheet {
+    max-width: none;
+  }
+}

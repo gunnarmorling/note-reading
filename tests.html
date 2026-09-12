@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Tests</title>
+    <style>
+      body {
+        font: 15px/1.6 ui-monospace, "SF Mono", Menlo, monospace;
+        margin: 32px;
+        max-width: 760px;
+      }
+      li { list-style: none; }
+      .pass::before { content: "ok   "; color: #1c7a52; }
+      .fail::before { content: "FAIL "; color: #c9432c; }
+      .fail { color: #c9432c; }
+      #summary { font-weight: bold; margin-bottom: 18px; }
+    </style>
+  </head>
+  <body>
+    <p id="summary">running…</p>
+    <ul id="out"></ul>
+
+    <script type="module">
+      // The assertions live in tests/assertions.js so that this page and
+      // `node tests/run.js` check the same things. This page is only a
+      // reporter.
+      import { run } from "./tests/assertions.js";
+
+      const out = document.getElementById("out");
+      const { passed, failed } = run((name, ok, detail) => {
+        const li = document.createElement("li");
+        li.className = ok ? "pass" : "fail";
+        li.textContent = name + (detail ? "  — " + detail : "");
+        out.appendChild(li);
+      });
+
+      const summary = document.getElementById("summary");
+      summary.textContent = `${passed} passed, ${failed} failed`;
+      summary.style.color = failed ? "#c9432c" : "#1c7a52";
+    </script>
+  </body>
+</html>

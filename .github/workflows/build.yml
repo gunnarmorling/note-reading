@@ -1,0 +1,45 @@
+#
+#  SPDX-License-Identifier: Apache-2.0
+#
+#  Copyright The original authors
+#
+#  Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
+#
+
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  tests:
+    name: 'Tests'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: 'Check out repository'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6 — https://github.com/actions/checkout/releases/tag/v6
+
+      - name: 'Report the Node version'
+        # Deliberately no setup-node. The suite installs nothing, needs nothing
+        # newer than Node 18, and the runner image's own Node satisfies it —
+        # which is one fewer action to pin and one fewer thing that can be
+        # replaced upstream. Printed so that a future breakage names the
+        # version it broke on.
+        run: node --version
+
+      - name: 'Run the suite'
+        # 238 assertions, then the app booted against the stub in tests/.
+        # Both are pure Node: no browser, no packages, no network.
+        run: node tests/run.js
