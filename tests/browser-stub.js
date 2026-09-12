@@ -26,8 +26,8 @@ class Element {
     this.disabled = false;
     this.checked = false;
     this.value = "";
-    this.className = "";
     this.id = "";
+    this._class = "";
     this._text = "";
     this._cls = null;
 
@@ -60,14 +60,15 @@ class Element {
   }
 
   #syncClass() {
-    this.className = Object.keys(this._cls ?? {}).join(" ");
-    this.attributes["class"] = this.className; // as a real classList does
+    // Straight to the field: the setter would clear the cache being synced.
+    this._class = Object.keys(this._cls ?? {}).join(" ");
+    this.attributes["class"] = this._class;
   }
 
   setAttribute(name, value) {
     this.attributes[name] = String(value);
     if (name === "class") {
-      this.className = String(value);
+      this._class = String(value);
       this._cls = null;
     }
   }
@@ -100,6 +101,16 @@ class Element {
 
   get children() {
     return this.childNodes;
+  }
+
+  get className() {
+    return this._class;
+  }
+
+  set className(value) {
+    this._class = String(value);
+    this.attributes["class"] = this._class;
+    this._cls = null;
   }
 
   get textContent() {

@@ -996,11 +996,11 @@ function paintRecord() {
 
   const right = `${Math.round(sum.accuracy * 100)}% right`;
   const median = `${secs(sum.medianMs)}s median`;
-  ui.stats.textContent =
-    span === "session"
-      ? `${plural(sum.n, "note")} · ${right} · ${median}`
-      : `${plural(sum.n, "note")} over ${sum.cards} of ${eligibleIds().length} in range · ` +
-        `${right} · ${median}`;
+  // The same sentence for every span. It used to add "over 22 of 11 in range"
+  // for the longer ones, which compared what a span recorded against the
+  // range set now — so narrowing the range left it claiming 22 of 11, and the
+  // line wrapped to say it. The rows below enumerate the notes regardless.
+  ui.stats.textContent = `${plural(sum.n, "note")} · ${right} · ${median}`;
 
   ui.statsVs.textContent = span === "session" ? sessionSplit() : comparison(span, now, sum);
 
@@ -1013,8 +1013,9 @@ function paintRecord() {
   ui.breakdownKey.hidden = tallies.length === 0;
   ui.breakdownKey.textContent =
     `Bars are the median for each note, against the slowest of them; the line is the ` +
-    `${secs(aimMs())}s to aim for, and green is inside it. × is how many times it came up — ` +
-    "a couple of tries makes a rough median, so the longer spans are where the real ones are.";
+    `${secs(aimMs())}s to aim for, and amber is inside it. × is how many times it came up — ` +
+    "a couple of tries makes a rough median, so the longer spans are where the real ones are. " +
+    "Faded rows are notes the range no longer asks for.";
   paintNoteRows(ui.breakdown, tallies);
 }
 
@@ -1066,10 +1067,18 @@ function paintNoteRows(into, tallies) {
   const medians = summarised.map((r) => r.medianMs).filter(Number.isFinite);
   const slowest = medians.length ? Math.max(...medians, aim) : aim;
 
+  // What the range still asks for. A span holds whatever you practised over
+  // it, which after narrowing the range means rows for notes the drill will
+  // not ask again — and, being the ones you had least practice at, they sort
+  // to the top and read as your worst problems. Faded rather than dropped,
+  // the way the cheat sheet fades what the limits exclude: recorded, not
+  // currently asked.
+  const asked = new Set(eligibleIds());
+
   into.replaceChildren();
   for (const row of summarised) {
     const line = document.createElement("div");
-    line.className = "bar-row";
+    line.className = asked.has(row.id) ? "bar-row" : "bar-row is-out";
 
     const name = document.createElement("span");
     name.className = "bar-name";

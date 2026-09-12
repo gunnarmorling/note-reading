@@ -299,8 +299,9 @@ hundred fit comfortably. Every latency rather than a running mean, because a
 mean is not a median and there is no recovering one later. What is lost is the
 order the trials came in.
 
-`paintRecord` draws all four spans through one row builder, because they are
-the same question asked of different lengths of time — a session that looked
+`paintRecord` draws all four spans through one row builder and one summary
+sentence, because they are the same question asked of different lengths of
+time — a session that looked
 like a different kind of thing from a month was the arrangement this replaced.
 Every span, the session included, is read off the session record rather than
 counted alongside it, so no two of them can disagree: `sessionTallies` folds
@@ -340,6 +341,13 @@ The session line reports a median for each half of the system — at and above
 middle C, and below it — as well as the combined one. With both staves on
 screen there is no clef to attribute a note to, but the hands still divide
 about there, and one median for the pair hides which of them is dragging.
+
+A row whose note is outside the current limits is faded, not dropped: the
+record keeps what a span recorded, and the notes you practised before
+narrowing the range are the ones you had least practice at, so they sort to
+the top of the list and read as the worst problems you have — while being
+unreachable. `paintNoteRows` asks `eligibleIds()`, which is the same set the
+drill draws from, so the two cannot disagree.
 
 Bars are medians of recorded trials, never the scheduler's own averages: those
 fade on purpose, because their job is to decide what to ask next. They are

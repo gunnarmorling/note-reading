@@ -80,6 +80,37 @@ for (let i = 0; i < 6; i++) {
   );
 }
 
+// Rows for notes the range no longer asks for, faded rather than dropped.
+{
+  const before = dom.el("breakdown").children.length;
+  const set = (id, value) => {
+    const s = dom.el(id);
+    s.value = value;
+    s.dispatch("change");
+  };
+  // Narrowed to the top of the range. What the limits actually become is
+  // whatever the clef and ledger settings can draw — the selects say — so the
+  // test reads them back rather than assuming it got what it asked for.
+  set("lowest", String(notes.diatonic("C", 5)));
+  set("highest", String(notes.diatonic("A", 5)));
+  const lowest = Number(dom.el("lowest").value);
+  const highest = Number(dom.el("highest").value);
+
+  const rows = dom.el("breakdown").children.map((r) => {
+    const name = r.children[0].textContent;
+    const dn = notes.diatonic(name[0], Number(name.slice(1)));
+    return { name, dn, faded: (r.getAttribute("class") ?? "").includes("is-out") };
+  });
+  const misfiled = rows.filter((r) => r.faded !== (r.dn < lowest || r.dn > highest));
+
+  check("no row is dropped when the range narrows", rows.length === before,
+    `${rows.length} rows, was ${before}`);
+  check("the narrowed range leaves some rows out", rows.some((r) => r.faded) && rows.some((r) => !r.faded),
+    rows.map((r) => r.name + (r.faded ? "(faded)" : "")).join(" "));
+  check("and exactly the ones outside it are faded", misfiled.length === 0,
+    misfiled.map((r) => r.name).join(", "));
+}
+
 check("six answers are counted", text("stats").startsWith("6 notes"), text("stats"));
 check("every one was right", text("stats").includes("100% right"), text("stats"));
 check("they are broken down by note", dom.el("breakdown").children.length > 0);
@@ -88,5 +119,5 @@ check("the session was saved", Object.keys(dom.store).some((k) => k.includes("cu
   Object.keys(dom.store).join(", "));
 
 for (const line of problems) console.log(`FAIL ${line}`);
-console.log(`${18 - problems.length} passed, ${problems.length} failed  (app boot)`);
+console.log(`${21 - problems.length} passed, ${problems.length} failed  (app boot)`);
 process.exit(problems.length === 0 ? 0 : 1);

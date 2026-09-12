@@ -7,6 +7,10 @@ Note names are German: the seventh degree is H, not B. Naturals only, so B —
 which in that naming means B flat — is never an answer, and the B key is
 unbound rather than taken as a synonym for H.
 
+![The drill: one note on the grand staff with the answer keys under it, and
+the day's record beside it — a bar per note against the slowest, with the
+fastest two inside the second being aimed at.](screenshot.png)
+
 No dependencies, no build step. The clef and notehead outlines come from
 [Bravura](https://github.com/steinbergmedia/bravura) (Steinberg, SIL OFL 1.1),
 inlined in `staff.js`. How it works: [ARCHITECTURE.md](ARCHITECTURE.md).
@@ -117,12 +121,17 @@ days. Rolling days, not calendar weeks. Two things about the rows are not
 obvious:
 
 - **A bar is that note's median against the slowest note in the same panel**,
-  with a line at the speed to aim for. Comparable within a panel, meaningless
-  between two.
+  with a line at the speed to aim for; amber means inside it. Comparable
+  within a panel, meaningless between two.
 - **A bar and a time need a measurement, an accuracy needs only a trial**, so
   a note that was asked and answered wrongly shows `0%` and no time. `×n` is
   how many times it came up — a couple of tries makes a rough median, so the
   longer spans hold the real numbers.
+- **Faded rows are notes the range no longer asks for.** A span keeps what you
+  practised over it, so narrowing the range leaves rows the drill will not
+  come back to — and, being the ones you had least practice at, they sort to
+  the top and read as your worst problems. They are faded rather than dropped,
+  the way the cheat sheet fades what the limits exclude.
 
 ## Cheat sheet
 

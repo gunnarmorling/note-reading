@@ -681,6 +681,13 @@ main {
   color: var(--muted);
 }
 
+/* Recorded, but not asked for at the current range — the same fading the
+   cheat sheet gives a note the limits exclude. The whole row goes, bar
+   included: it is the row that is out of play, not one column of it. */
+.bar-row.is-out {
+  opacity: 0.45;
+}
+
 .bar-name {
   color: var(--text);
   font-family: var(--sans);
