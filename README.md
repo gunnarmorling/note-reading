@@ -1,7 +1,8 @@
 # Note reading
 
-A sight-reading drill for the treble and bass clefs. It shows one note, times
-how long you take to name it, and brings the slow ones back sooner.
+A sight-reading drill for the treble and bass clefs. It shows a short line of
+notes, times how long you take to name each one, and brings the slow ones back
+sooner.
 
 Note names are German: the seventh degree is H, not B. Naturals only, so B —
 which in that naming means B flat — is never an answer, and the B key is
@@ -64,20 +65,31 @@ one ledger line, C2–C6 with two, G2–F5 with none (and a gap in the middle,
 since neither staff reaches A3–E4 unaided). Change the clef or the range and
 the limits follow as closely as the new set allows.
 
+`Line` sets how many notes are on the staff at once, one to four; three by
+default. Reading is mostly reading from the note before, a third up, a step
+down, and a note shown on its own never has one. `One note` is the drill as it
+always was.
+
 They can contradict each other without saying so: both clefs with nothing
 below C4 is every note at or above middle C, all of them on the treble staff,
 which leaves the bass staff empty and looks like a broken clef setting.
 
 ## Answering
 
-Click the keys or press C through H. A MIDI keyboard in Chrome or Edge takes
+Answer the notes of a line left to right; the tinted band is on the one being
+asked, and moves on as you answer. Click the keys or press C through H. A MIDI keyboard in Chrome or Edge takes
 over as the input (Safari has no Web MIDI); an acoustic piano works through
 the microphone.
 
-Get one wrong and the note stays until you answer it correctly. It has already
-been scored — the first answer is the measurement, later attempts change
-nothing and are not timed — so the wait is for the one moment the name you
-have just been told and the note in front of you are both in view. If a note
+Get one wrong and the line stops on that note until you answer it correctly.
+It has already been scored — the first answer is the measurement, later
+attempts change nothing and are not timed — so the wait is for the one moment
+the name you have just been told and the note in front of you are both in
+view.
+
+**The first note of a line is not timed**, nor the note after a miss. Every
+other note is timed from your answer to the one before it, which is the time
+worth having: reading a note in context, not finding a line on a blank page. If a note
 turns out to be unanswerable, changing any setting moves the drill on.
 
 `Hear the note when I answer`, in the naming deck's menu, sounds what you

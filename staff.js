@@ -59,7 +59,8 @@ export const SCALE_NOTE_RIGHT = 20;
 const SCALE_LEDGER_EXTENSION = 3;
 
 /**
- * How far a glyph's outline reaches above and below its own origin.
+ * How far a glyph's outline reaches from its own origin: above and below it,
+ * and to either side.
  *
  * Every one of these paths uses absolute M, L and C only, so the numbers come
  * in x,y pairs and the odd ones out are the y coordinates. Read off the
@@ -68,20 +69,24 @@ const SCALE_LEDGER_EXTENSION = 3;
  * that is a number that goes stale the first time a glyph is regenerated.
  *
  * @param {string} d
- * @returns {{top: number, bottom: number}}
+ * @returns {{top: number, bottom: number, left: number, right: number}}
  */
 export function inkExtent(d) {
   let top = Infinity;
   let bottom = -Infinity;
+  let left = Infinity;
+  let right = -Infinity;
   for (const piece of d.split(/[MLCZ]/)) {
     const nums = piece.match(/-?\d+(?:\.\d+)?/g);
     if (!nums) continue;
-    for (let i = 1; i < nums.length; i += 2) {
-      top = Math.min(top, Number(nums[i]));
-      bottom = Math.max(bottom, Number(nums[i]));
+    for (let i = 0; i + 1 < nums.length; i += 2) {
+      left = Math.min(left, Number(nums[i]));
+      right = Math.max(right, Number(nums[i]));
+      top = Math.min(top, Number(nums[i + 1]));
+      bottom = Math.max(bottom, Number(nums[i + 1]));
     }
   }
-  return { top, bottom };
+  return { top, bottom, left, right };
 }
 
 /**
@@ -221,8 +226,54 @@ export function viewBox(dns, clefNames = BOTH_CLEFS, width = STAFF_RIGHT) {
 }
 
 /**
- * Draw one note on the grand staff. Returns the notehead element so the
- * caller can colour it for feedback.
+ * Distance between neighbouring notes of a line, notehead to notehead. Four
+ * notes at this spacing still clear the clef on the left, ledger lines
+ * included.
+ */
+export const LINE_SPACING = 60;
+
+/**
+ * Where the clefs' ink ends, whichever of the two reaches further — they are
+ * within half a unit of each other, and one number keeps a line in the same
+ * place whatever the clef setting.
+ */
+const CLEF_RIGHT =
+  CLEF_X + Math.max(...Object.values(CLEFS).map((clef) => inkExtent(GLYPH[clef.glyph]).right));
+
+/**
+ * The middle of the staff that is free for notes: from the end of the clef
+ * to the end of the staff. What a longer line has to be centred on to look
+ * centred — centred on the staff as a whole, three or four notes sit visibly
+ * left, towards the clef.
+ */
+const LINE_CENTRE = (CLEF_RIGHT + STAFF_RIGHT) / 2;
+
+/** How far the cursor reaches either side of the notehead it sits behind. */
+const CURSOR_PAD = 7;
+
+/**
+ * Where each notehead's left edge goes in a line of this many notes.
+ *
+ * One or two notes stay centred on the staff, where a single note has always
+ * sat: that few leave the clef's share of the width unnoticed. Three or four
+ * reach far enough towards the clef that it shows, so they are centred on the
+ * space after it instead.
+ *
+ * @param {number} count
+ * @returns {number[]}
+ */
+export function lineXs(count) {
+  const centre = count >= 3 ? LINE_CENTRE : NOTE_X + NOTEHEAD_WIDTH / 2;
+  return Array.from(
+    { length: count },
+    (_, i) => centre - NOTEHEAD_WIDTH / 2 + (i - (count - 1) / 2) * LINE_SPACING,
+  );
+}
+
+/**
+ * Draw a line of notes, all at once — reading ahead is the skill — with a
+ * cursor behind the one being answered. Returns the noteheads, for colouring,
+ * and the cursor, for `markLive` to move.
  *
  * With both clefs there is nothing to say about which one: both are on
  * screen, and a position on the system is a pitch. Which is the point — the
@@ -230,34 +281,72 @@ export function viewBox(dns, clefNames = BOTH_CLEFS, width = STAFF_RIGHT) {
  * glyph at the edge of the page fixes a thing you have to remember rather
  * than see.
  *
+ * The cursor is a faint band behind the note rather than anything done to the
+ * notehead itself: the note being read should look like every other note on
+ * the page, and the ones already answered already change colour. A line of
+ * one note has no cursor, there being nothing to point it out from.
+ *
  * @param {SVGElement} svg
- * @param {number} dn
+ * @param {number[]} dns in reading order
  * @param {string[]} [clefNames]
- * @returns {SVGElement}
+ * @returns {{heads: SVGElement[], cursor: SVGElement | null}}
  */
-export function render(svg, dn, clefNames = BOTH_CLEFS) {
+export function renderLine(svg, dns, clefNames = BOTH_CLEFS) {
   svg.replaceChildren();
   drawSystem(svg, STAFF_RIGHT, clefNames);
 
-  const y = grandY(dn, clefNames);
-  for (const ly of ledgerLines(y, clefFor(dn, clefNames))) {
-    svg.appendChild(
-      line(
-        ly,
-        LEDGER_THICKNESS,
-        NOTE_X - LEDGER_EXTENSION,
-        NOTE_X + NOTEHEAD_WIDTH + LEDGER_EXTENSION,
-      ),
-    );
+  const xs = lineXs(dns.length);
+  const ys = dns.map((dn) => grandY(dn, clefNames));
+
+  /** @type {SVGElement | null} */
+  let cursor = null;
+  if (dns.length > 1) {
+    // Tall enough for the staves and for the furthest ledger note, so it reads
+    // as marking a place in the line rather than a place on one staff.
+    const lines = systemLines(clefNames);
+    const top = Math.min(lines.top, ...ys.map((y) => y - 5)) - CURSOR_PAD;
+    const bottom = Math.max(lines.bottom, ...ys.map((y) => y + 5)) + CURSOR_PAD;
+    cursor = el("rect", {
+      x: xs[0] - CURSOR_PAD,
+      y: top,
+      width: NOTEHEAD_WIDTH + 2 * CURSOR_PAD,
+      height: bottom - top,
+      rx: 3,
+      class: "cursor",
+    });
+    svg.appendChild(cursor);
   }
 
-  const head = el("path", {
-    d: GLYPH.wholeNote,
-    transform: `translate(${NOTE_X} ${y})`,
-    class: "notehead",
+  const heads = dns.map((dn, i) => {
+    const x = xs[i];
+    const y = ys[i];
+    for (const ly of ledgerLines(y, clefFor(dn, clefNames))) {
+      svg.appendChild(
+        line(ly, LEDGER_THICKNESS, x - LEDGER_EXTENSION, x + NOTEHEAD_WIDTH + LEDGER_EXTENSION),
+      );
+    }
+    const head = el("path", {
+      d: GLYPH.wholeNote,
+      transform: `translate(${x} ${y})`,
+      class: "notehead",
+    });
+    svg.appendChild(head);
+    return head;
   });
-  svg.appendChild(head);
-  return head;
+
+  const drawn = { heads, cursor };
+  markLive(drawn, 0);
+  return drawn;
+}
+
+/**
+ * Move the cursor to the note now being answered.
+ * @param {{heads: SVGElement[], cursor: SVGElement | null}} drawn
+ * @param {number} index
+ */
+export function markLive({ heads, cursor }, index) {
+  heads.forEach((head, i) => head.setAttribute("aria-current", String(i === index)));
+  cursor?.setAttribute("x", String(lineXs(heads.length)[index] - CURSOR_PAD));
 }
 
 /**

@@ -524,6 +524,14 @@ main {
   fill: var(--ink-faint);
 }
 
+/* Behind the note being answered in a line. A tint rather than anything done
+   to the notehead: the note being read should look like every note on a
+   real page, and the ones already answered change colour on their own. */
+#staff .cursor {
+  fill: var(--warm);
+  opacity: 0.2;
+}
+
 #staff .notehead.is-correct {
   fill: var(--ink-right);
 }

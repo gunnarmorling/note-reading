@@ -10,6 +10,7 @@ see [README.md](README.md).
 | --- | --- |
 | `notes.js` | Pitch model and staff geometry. Diatonic numbers, clefs, ranges. |
 | `scheduler.js` | The algorithm. Pure functions over plain data. |
+| `sequence.js` | Lines of notes: which the scheduler picks, and the order they are written in. Pure. |
 | `staff.js` | SVG: the staff, the inlined glyph outlines, the keyboard diagram. |
 | `storage.js` | localStorage persistence, plus between-session decay. |
 | `history.js` | Sessions and the windows over them. Pure functions. |
@@ -18,8 +19,8 @@ see [README.md](README.md).
 | `app.js` | The trial loop, the controls and the record panel. |
 
 Everything that can be a pure function over plain data is one, and lives in
-`notes.js`, `scheduler.js` or `history.js` — which is what makes the
-assertions in `tests.html` possible without a DOM.
+`notes.js`, `scheduler.js`, `sequence.js` or `history.js` — which is what
+makes the assertions in `tests.html` possible without a DOM.
 
 The three glyphs in `staff.js` were extracted once from Bravura with fontTools
 and pre-scaled into the staff's own coordinate system, where one staff space
@@ -36,13 +37,13 @@ right, the cheat sheet downstairs at full width.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                                  │ CLEF   RANGE       LOWEST HIGHEST        │
-│ NOTE READING [Name ▾][Play ▾]    │ [Both] [One ledger] [C4]  [A5]  Gunnar ▾ │
+│                             │  CLEF   RANGE        LOW  HIGH LINE           │
+│ NOTE READING [Name▾][Play▾] │ [Both] [One ledger] [C4] [A5] [Three] Gunnar▾ │
 └─────────────────────────────────────────────────────────────────────────────┘
    ┌──────────────────────────┐      ┌──────────────────────────────┐
    │                          │      │ SESSION │ TODAY │ 7D │ 30D   │
    │          𝄞               │      │ 34 notes · 91% · 0.94s       │
-   │   ───────●──────         │      │ 1.20s below middle C         │
+   │   ───●───[●]────●──      │      │ 1.20s below middle C         │
    │          𝄢               │      │ F3 ██████████│ ×3  67% 1.80s │
    └──────────────────────────┘      │ C4 ███▌ (amber)  ×5 100% .70s│
      This is G3, not F3.             └──────────────────────────────┘
@@ -178,6 +179,57 @@ response time you're aiming for, `ALPHA` trades responsiveness against noise,
 `ERROR_WEIGHT` sets how hard a miss counts, `RECENCY_TAU` how long a note
 stays suppressed, `STARVE_TAU` how long one can be ignored, and
 `DECAY_PER_DAY` how fast things go stale.
+
+## Lines of notes
+
+Sight-reading is barely note identification. A reader finds an anchor and then
+reads contour — a third up, a step down, a leap and back — and a note shown on
+its own, the screen reset to neutral before and after it, trains the one thing
+reading never asks for: naming a note with no predecessor. So the drill shows
+a line of up to four, drawn all at once, and the reader answers left to
+right. The cursor is a faint band behind the note being asked, not anything
+done to its notehead, so the note being read looks like every other note.
+
+**The card stays the note.** A line is several trials of the ordinary kind, so
+the scheduler's cards, the session record and every panel carry on exactly as
+before, and one note at a time is simply a line of one.
+
+**Which notes, and in what order.** The two pull against each other. A
+diatonic stepwise line is guessable — after C D, E is not being read, and the
+drill would quietly measure pattern completion, invisibly. Choosing the notes
+for musical sense would take the choice away from the scheduler, which picks
+by weakness. So `chooseLine` lets the scheduler choose, one weighted draw at a
+time from what is left inside a tenth of the notes already chosen, and only
+their order is constrained. Distinct notes, because a note repeated inside a
+line is primed the second time.
+
+The order is drawn at random over all of the permutations (24 at most),
+weighted by `contourWeight`: steps and thirds worth three, a fourth one, wider
+leaps a half, two leaps in a row in the same direction ruled out, and a
+straight run of steps allowed but cut to a third. Drawn rather than taking
+the best, so the same notes do not always come out the same way. No harmonic
+model: for a single line, sounding well is almost entirely interval and
+contour, and harmony is about notes sounding together.
+
+**The first note of a line is a different measurement from the rest.** It
+includes taking in the whole line — the clef, the shape, where it sits.
+Later notes are timed from the answer before, which is the interval-reading
+time worth having. One median over both would mix two quantities, so the
+first is recorded and not timed, by the same rule and the same means as the
+first answer of a session: `startedAt` is NaN and the latency comes out NaN.
+A line of one is timed from the paint, as a note always was — there is no
+line to take in.
+
+**A miss stops the line.** Same rule as ever: the note stays until it is
+answered. The note after it is not timed either. While you were being told
+the answer the next note was in view to read ahead of the clock, so timing it
+from the correction flatters it and timing it from the miss penalises it.
+
+Not yet done, and waiting on data from lines to be worth doing: an interval
+card beside the note card, so the panel could say that C4 is fast but a
+descending sixth into C4 is slow. And a key setting — the drill is already C
+major and A minor, and anything else needs accidentals `notes.js` and
+`staff.js` do not have.
 
 ## The grand staff
 
@@ -318,12 +370,13 @@ The clock starts inside a double `requestAnimationFrame`, which puts it after
 the frame is painted rather than when the DOM was mutated. Latencies below
 120ms are clamped up: that is a key bouncing, not a reading.
 
-Three kinds of answer are not timed at all, though they all still count as
+Several kinds of answer are not timed at all, though they all still count as
 answers. A wrong one, because how long you took to get it wrong says nothing
 about how fast you can get it right. The correction that follows it, because
 by then you have been told the answer. And anything over ten seconds, because
 nothing was being measured but your absence — as with the first answer of a
-sitting.
+sitting, and the first note of a line, and the note after a miss inside one
+(see [Lines of notes](#lines-of-notes)).
 
 Discarded rather than clamped, which is the important part: one trip to the
 kitchen on a note you answer in 700ms would pull its average to 2.9s, and
@@ -450,7 +503,7 @@ note you may well know.
 node tests/run.js
 ```
 
-238 assertions and a boot test, in about a tenth of a second. The same
+287 assertions and a boot test, in about a tenth of a second. The same
 assertions run in a browser at `/tests.html`, which is a reporter around the
 same module.
 
@@ -465,7 +518,7 @@ runs is node's own runtime plus five files in `tests/`:
 | `dom-stub.js` | ~50 lines: an element that takes attributes, children and text. All the assertions need, because `staff.js` builds SVG. |
 | `browser-stub.js` | the whole fiction — elements with classes and datasets, a document, localStorage, a clock, frame and timer queues, an AudioContext that records what it was asked to sound. For booting the app. |
 | `suite.js` | imports every module (the syntax check), then runs the assertions. |
-| `smoke.js` | boots `app.js` against the fiction, then answers six notes and checks the record follows. |
+| `smoke.js` | boots `app.js` against the fiction, then answers two lines, misses a note in a third, and checks the record and the timing follow. |
 | `run.js` | runs the two suites, each in its own process. |
 
 The modules are importable in Node with no stub at all, which is worth
@@ -476,7 +529,8 @@ stubs are needed only when something is *called*.
 What the assertions cover: the pitch model and every staff-geometry invariant
 (one position per pitch, even spacing in each clef setting, the clefs'
 outlines inside the view), the candidate sets and the pitch limits, the
-card-id migrations, the scheduler's weighting and its error term, accuracy
+card-id migrations, the scheduler's weighting and its error term, how a line
+is chosen and ordered and drawn, accuracy
 counting, untimed answers, the history windows and their comparisons, and the
 audio DSP against synthesised piano tones for every note the drill can draw.
 

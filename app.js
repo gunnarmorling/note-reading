@@ -3,8 +3,9 @@ import {
   nearestWithLetter, notesFor, toMidi,
 } from "./notes.js";
 
-import { TARGET_MS, isTimed, median, pick, record } from "./scheduler.js";
-import { grandScale, keyMap, render, viewBox } from "./staff.js";
+import { TARGET_MS, isTimed, median, record } from "./scheduler.js";
+import { chooseLine } from "./sequence.js";
+import { grandScale, keyMap, markLive, renderLine, viewBox } from "./staff.js";
 import * as store from "./storage.js";
 import * as midi from "./midi.js";
 import * as audio from "./audio.js";
@@ -33,8 +34,14 @@ const state = {
   totals: persisted.totals,
   settings: store.loadSettings(),
   trial: 0,
-  /** @type {number | null} the note on screen, as a diatonic number */
+  /** @type {number | null} the note being answered, as a diatonic number */
   current: null,
+  /** @type {number[]} the whole line on screen, in reading order */
+  line: [],
+  /** Which note of the line is being answered. */
+  index: 0,
+  /** @type {{heads: SVGElement[], cursor: SVGElement | null} | null} */
+  drawn: null,
   /** Which deck is being drilled: "typed" while no instrument is connected. */
   mode: "typed",
   /** @type {import("./history.js").Session} the sitting being recorded */
@@ -93,6 +100,7 @@ function collectElements() {
     ledgers: /** @type {HTMLSelectElement} */ (need("ledgers")),
     lowest: /** @type {HTMLSelectElement} */ (need("lowest")),
     highest: /** @type {HTMLSelectElement} */ (need("highest")),
+    sequence: /** @type {HTMLSelectElement} */ (need("sequence")),
     reset: need("reset"),
     cheatToggle: need("cheat-toggle"),
     cheatSheet: need("cheat-sheet"),
@@ -365,6 +373,8 @@ function nextTrial() {
     ui.svg.replaceChildren();
     releaseKeys();
     state.current = null;
+    state.line = [];
+    state.drawn = null;
     state.head = null;
     state.accepting = false;
     state.retrying = false;
@@ -373,22 +383,60 @@ function nextTrial() {
     return;
   }
 
-  const id = pick(state.cards, ids, state.trial);
-  state.current = cardPitch(id);
+  state.line = chooseLine(state.cards, ids, state.trial, state.settings.sequence).map(cardPitch);
+  state.drawn = renderLine(ui.svg, state.line, clefNames());
   state.retrying = false;
-  state.head = render(ui.svg, state.current, clefNames());
+  // Nothing is accepted until the line is painted, so that an answer typed
+  // into the gap cannot land on a note that is not yet on screen.
+  state.accepting = false;
   releaseKeys();
   ui.verdict.textContent = "";
   ui.verdict.className = "verdict";
+  moveTo(0);
 
   // Start the clock on the frame the note is actually painted, not when the
   // DOM is mutated. One rAF runs before paint; the second runs after it.
+  //
+  // Only for a note on its own, though. The first note of a line is not the
+  // same measurement as the rest: it includes taking in the whole line —
+  // finding the clef, the shape, where it sits — and putting that in the same
+  // median as the notes after it mixes two quantities. So it is recorded and
+  // not timed, the same rule as the first answer of a session, and the clock
+  // for every later note starts at the answer before it.
   requestAnimationFrame(() =>
     requestAnimationFrame(() => {
-      state.startedAt = performance.now();
+      state.startedAt = state.line.length > 1 ? NaN : performance.now();
       state.accepting = true;
     }),
   );
+}
+
+/**
+ * Put the cursor on a note of the line, which makes it the one answered.
+ * @param {number} index
+ */
+function moveTo(index) {
+  state.index = index;
+  state.current = state.line[index];
+  state.head = state.drawn?.heads[index] ?? null;
+  if (state.drawn) markLive(state.drawn, index);
+}
+
+/**
+ * On to the next note of the line, or a pause and a fresh line after the
+ * last one.
+ * @param {number} from when the clock for the next note starts: the answer
+ *   that moved the cursor, or NaN for a next note that is not to be timed.
+ */
+function advance(from) {
+  if (state.index + 1 < state.line.length) {
+    moveTo(state.index + 1);
+    state.startedAt = from;
+    state.accepting = true;
+    return;
+  }
+  state.accepting = false;
+  setTimeout(nextTrial, CORRECT_PAUSE_MS);
 }
 
 /**
@@ -444,7 +492,7 @@ function resolve(correct, answerLabel, { at = performance.now(), mode = "typed" 
   paintRecord();
 
   if (correct) {
-    setTimeout(nextTrial, CORRECT_PAUSE_MS);
+    advance(at);
     return;
   }
 
@@ -483,8 +531,11 @@ function correctionAttempt(correct, answerLabel) {
   ui.verdict.textContent = correct ? name : tryAgain(state.current, answerLabel);
   if (!correct) return;
   state.retrying = false;
-  state.accepting = false;
-  setTimeout(nextTrial, CORRECT_PAUSE_MS);
+  // The note after a miss is not timed. The line stopped while you were told
+  // the answer and found it, and all that while the next note was in view to
+  // be read ahead of the clock — so timing it from the correction would make
+  // it look faster than it is, and timing it from the miss slower.
+  advance(NaN);
 }
 
 /** @param {string} letter */
@@ -1193,6 +1244,7 @@ function init() {
 
   ui.clefs.value = state.settings.clefs;
   ui.ledgers.value = String(state.settings.ledgers);
+  ui.sequence.value = String(state.settings.sequence);
   buildLimitOptions();
   fitStaff();
   buildTabs();
@@ -1208,6 +1260,7 @@ function init() {
       // highest swaps them rather than emptying the drill.
       lowest: Math.min(a, b),
       highest: Math.max(a, b),
+      sequence: Number(ui.sequence.value),
     };
     buildLimitOptions();
     fitStaff();
@@ -1216,7 +1269,7 @@ function init() {
     paintRecord();
     nextTrial();
   };
-  for (const select of [ui.clefs, ui.ledgers, ui.lowest, ui.highest]) {
+  for (const select of [ui.clefs, ui.ledgers, ui.lowest, ui.highest, ui.sequence]) {
     select.addEventListener("change", onSettingChange);
   }
 

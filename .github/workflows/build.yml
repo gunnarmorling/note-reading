@@ -40,6 +40,6 @@ jobs:
         run: node --version
 
       - name: 'Run the suite'
-        # 238 assertions, then the app booted against the stub in tests/.
+        # 287 assertions, then the app booted against the stub in tests/.
         # Both are pure Node: no browser, no packages, no network.
         run: node tests/run.js

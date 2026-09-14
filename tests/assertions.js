@@ -15,8 +15,11 @@ import {
 } from "../notes.js";
 import {
   GLYPH, NOTEHEAD_WIDTH, SCALE_NOTE_RIGHT, SCALE_WIDTH, grandScale, hasBlackKeyAbove, inkExtent,
-  ledgerLines, noteXs, viewBox,
+  LINE_SPACING, lineXs, ledgerLines, markLive, noteXs, renderLine, viewBox,
 } from "../staff.js";
+import {
+  LEAP, SEQUENCE_SPAN, arrange, chooseLine, contourWeight, permutations,
+} from "../sequence.js";
 import { mergeClefIds, renameLegacyIds, tagUntaggedIds } from "../storage.js";
 import {
   SESSION_GAP_MS, WINDOWS, continuesSession, newSession, overall, previousRange, recordAnswer,
@@ -953,6 +956,98 @@ export function run(report) {
       ok("more time decays further", decay(c, 30).ewma > decay(c, 7).ewma);
       ok("but never past the prior", decay(c, 10000).ewma <= PRIOR_MS + 1e-9);
       ok("a note already at the prior stays there", Math.abs(decay(settled(PRIOR_MS), 50).ewma - PRIOR_MS) < 1e-9);
+    }
+
+    // --- lines of notes --------------------------------------------------
+
+    {
+      const C4 = diatonic("C", 4);
+      eq("four notes have 24 orders", permutations([1, 2, 3, 4]).length, 24);
+      eq("and all of them are different", new Set(permutations([1, 2, 3, 4]).map(String)).size, 24);
+      ok("two leaps up in a row are never written",
+        contourWeight([C4, C4 + LEAP, C4 + 2 * LEAP]) === 0);
+      ok("nor two down", contourWeight([C4 + 2 * LEAP, C4 + LEAP, C4]) === 0);
+      ok("a leap and back is fine", contourWeight([C4, C4 + 4, C4 + 1]) > 0);
+      ok("a third is worth more than a sixth",
+        contourWeight([C4, C4 + 2]) > contourWeight([C4, C4 + 5]));
+      ok("a straight run of steps is allowed but made rare",
+        contourWeight([C4, C4 + 1, C4 + 2]) > 0 &&
+          contourWeight([C4, C4 + 1, C4 + 2]) < contourWeight([C4, C4 + 2, C4 + 1]));
+
+      // Arranged over many draws, the forbidden shape never appears and the
+      // same notes do not always come out in the same order.
+      const rand = seeded(11);
+      const spread = [C4, C4 + 3, C4 + 6, C4 + 9];
+      const seen = new Set();
+      let broken = 0;
+      for (let i = 0; i < 500; i++) {
+        const order = arrange(spread, rand);
+        seen.add(String(order));
+        if (contourWeight(order) === 0) broken += 1;
+        if (order.slice().sort((a, b) => a - b).join() !== spread.join()) broken += 1;
+      }
+      eq("arranging only reorders, and never into a forbidden contour", broken, 0);
+      ok("and does not always pick the same order", seen.size > 3, `${seen.size} orders`);
+    }
+    {
+      const ids = candidateIds(BOTH_CLEFS, 2, 0, 1000, "typed");
+      const rand = seeded(5);
+      let wide = 0;
+      let repeated = 0;
+      let short = 0;
+      for (let t = 0; t < 300; t++) {
+        const line = chooseLine(new Map(), ids, t, 4, rand);
+        const dns = line.map(cardPitch);
+        if (Math.max(...dns) - Math.min(...dns) > SEQUENCE_SPAN) wide += 1;
+        if (new Set(line).size !== line.length) repeated += 1;
+        if (line.length !== 4) short += 1;
+        if (!line.every((id) => ids.includes(id))) repeated += 1;
+      }
+      eq("a line stays inside a tenth", wide, 0);
+      eq("holds no note twice, and only eligible ones", repeated, 0);
+      eq("and is as long as asked when the range allows", short, 0);
+
+      const two = ids.slice(0, 2);
+      eq("a range smaller than the line gives a shorter line", chooseLine(new Map(), two, 0, 4, rand).length, 2);
+      eq("a line of one is one note", chooseLine(new Map(), ids, 0, 1, rand).length, 1);
+
+      // The scheduler still chooses: a note far slower than the rest turns up
+      // in most lines.
+      const cards = new Map(ids.map((id) => [id, { ...newCard(), ewma: 600, seen: 10, timed: 10 }]));
+      const slow = cardId(diatonic("G", 4), "typed");
+      cards.set(slow, { ...newCard(), ewma: 3000, seen: 10, timed: 10 });
+      let hits = 0;
+      for (let t = 0; t < 200; t++) if (chooseLine(cards, ids, t, 3, rand).includes(slow)) hits += 1;
+      // Evenly weighted, one note of 29 would be in about one line in eight.
+      ok("the scheduler's weights still choose the notes", hits > 100, `${hits} of 200 lines`);
+    }
+    {
+      const inkRight = 10 + Math.max(inkExtent(GLYPH.gClef).right, inkExtent(GLYPH.fClef).right);
+      const middle = (xs) => (xs[0] + xs.at(-1) + NOTEHEAD_WIDTH) / 2;
+      near("a single note sits in the middle of the staff", middle(lineXs(1)), 150);
+      near("and so do two", middle(lineXs(2)), 150);
+      near("three are centred between the clef and the end of the staff",
+        lineXs(3)[0] - inkRight, 300 - (lineXs(3)[2] + NOTEHEAD_WIDTH));
+      near("and so are four", lineXs(4)[0] - inkRight, 300 - (lineXs(4)[3] + NOTEHEAD_WIDTH));
+      near("spaced evenly", lineXs(3)[2] - lineXs(3)[1], LINE_SPACING);
+      ok("the first of four clears the clefs, ledger lines and all",
+        lineXs(4)[0] - 4 > inkRight, `${lineXs(4)[0] - 4} against ${inkRight}`);
+      ok("and the last of four ends inside the staff, ledger lines and all",
+        lineXs(4)[3] + NOTEHEAD_WIDTH + 4 < 300, `${lineXs(4)[3] + NOTEHEAD_WIDTH + 4}`);
+      eq("a clef's ink is measured sideways too", inkExtent(GLYPH.fClef).right, 27.36);
+
+      const svg = document.createElementNS("", "svg");
+      const dns = [diatonic("C", 4), diatonic("E", 4), diatonic("A", 3)];
+      const drawn = renderLine(svg, dns, BOTH_CLEFS);
+      eq("every note of the line is drawn", drawn.heads.length, 3);
+      eq("the cursor starts on the first", drawn.heads.map((h) => h.getAttribute("aria-current")).join(),
+        "true,false,false");
+      markLive(drawn, 2);
+      eq("and moves along", drawn.heads.map((h) => h.getAttribute("aria-current")).join(), "false,false,true");
+      near("sitting behind the note it marks",
+        Number(drawn.cursor?.getAttribute("x")) + Number(drawn.cursor?.getAttribute("width")) / 2,
+        lineXs(3)[2] + NOTEHEAD_WIDTH / 2);
+      eq("a single note has no cursor", renderLine(svg, [dns[0]], BOTH_CLEFS).cursor, null);
     }
 
     // --- median ----------------------------------------------------------

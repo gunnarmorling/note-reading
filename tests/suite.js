@@ -15,6 +15,7 @@ install();
 const modules = [
   "notes.js",
   "scheduler.js",
+  "sequence.js",
   "staff.js",
   "storage.js",
   "history.js",

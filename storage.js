@@ -3,6 +3,7 @@
 
 import { newCard, decay } from "./scheduler.js";
 import { everyNote } from "./notes.js";
+import { DEFAULT_SEQUENCE, SEQUENCE_LENGTHS } from "./sequence.js";
 
 // One roster, then three keys per player: the scheduler's cards, the
 // settings, and the history. Namespaced rather than merged into one blob so
@@ -407,7 +408,7 @@ export function importAll(data) {
 
 /**
  * @returns {{clefs: string, ledgers: number, cheat: boolean, tuningCents: number,
- *   lowest: number, highest: number}}
+ *   lowest: number, highest: number, sequence: number}}
  */
 export function loadSettings() {
   const notes = everyNote();
@@ -423,6 +424,8 @@ export function loadSettings() {
     tuningCents: 0,
     lowest,
     highest,
+    /** How many notes a line holds. */
+    sequence: DEFAULT_SEQUENCE,
   };
   /** @param {unknown} v @param {number} dflt */
   const pitch = (v, dflt) => (notes.includes(/** @type {number} */ (v)) ? v : dflt);
@@ -442,6 +445,7 @@ export function loadSettings() {
         : fallback.tuningCents,
       lowest: pitch(p.lowest, lowest),
       highest: pitch(p.highest, highest),
+      sequence: SEQUENCE_LENGTHS.includes(p.sequence) ? p.sequence : fallback.sequence,
     };
   } catch {
     return fallback;

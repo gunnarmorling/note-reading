@@ -82,7 +82,8 @@
 
           <!-- What the drill asks for, behind a rule: the same bar, the other
                group. Left to right in the order they compose — clef, then how
-               far past it, then the two pitch limits. -->
+               far past it, then the two pitch limits — and last how many of
+               those notes to read at once. -->
           <div class="controls">
             <span class="setting">
               <label for="clefs">Clef</label>
@@ -107,6 +108,15 @@
             <span class="setting">
               <label for="highest">Highest</label>
               <select id="highest"></select>
+            </span>
+            <span class="setting">
+              <label for="sequence">Line</label>
+              <select id="sequence">
+                <option value="1">One note</option>
+                <option value="2">Two notes</option>
+                <option value="3">Three notes</option>
+                <option value="4">Four notes</option>
+              </select>
             </span>
           </div>
         </div>
@@ -147,7 +157,7 @@
     <main>
       <div class="drill">
         <div class="sheet">
-          <svg id="staff" class="stave" viewBox="-4 -12 268 124" role="img" aria-label="A single note on a grand staff"></svg>
+          <svg id="staff" class="stave" viewBox="-4 -12 268 124" role="img" aria-label="Notes to read on a grand staff"></svg>
         </div>
 
         <p id="verdict" class="verdict" role="status" aria-live="polite"></p>
