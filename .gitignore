@@ -1,2 +1,4 @@
 # Python leaves these behind when tools/dsp imports across files.
 __pycache__/
+.DS_Store
+_tmp
