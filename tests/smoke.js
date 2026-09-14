@@ -16,7 +16,9 @@ const page = readFileSync(join(root, "index.html"), "utf8");
 const dom = install(page);
 
 const problems = [];
+let checked = 0;
 const check = (what, ok, detail = "") => {
+  checked += 1;
   if (!ok) problems.push(detail ? `${what}  — ${detail}` : what);
 };
 
@@ -49,22 +51,34 @@ check("the cheat sheet says what is in play", text("cheat-count").includes("in p
 const notes = await import("../notes.js");
 const heads = () =>
   dom.el("staff").children.filter((c) => (c.getAttribute("class") ?? "").startsWith("notehead"));
-function shownLetter() {
+function shownPitch() {
   const head = heads().find((c) => c.getAttribute("aria-current") === "true");
   const y = Number(head.getAttribute("transform").split(" ")[1].replace(")", ""));
-  const dn = notes
+  return notes
     .notesFor(notes.BOTH_CLEFS, 2)
     .find((d) => Math.abs(notes.grandY(d) - y) < 0.01);
-  return notes.fromDiatonic(dn).letter;
 }
+const shownLetter = () => notes.fromDiatonic(shownPitch()).letter;
+const stored = () => JSON.parse(Object.entries(dom.store).find(([k]) => k.includes("current"))[1]);
+/** Every timed answer as "note<-note before", in no particular order. */
+const pairs = (session) =>
+  Object.entries(session.cards)
+    .flatMap(([id, t]) => (t.from ?? []).map((from) => `${id.split(":")[1]}<-${from}`))
+    .sort()
+    .join(" ");
 const press = (key) => document.dispatch("keydown", { key, preventDefault() {}, target: null });
 
 check("a line of three is drawn by default", heads().length === 3, `${heads().length} noteheads`);
 
 // Six answers: two lines of three. Timers are flushed only at the end of a
 // line, which is the one place the drill waits.
+const expectedPairs = [];
+let lastPitch = null;
 for (let i = 0; i < 6; i++) {
   dom.advance(700 + i * 100);
+  const pitch = notes.label(shownPitch());
+  if (i % 3 !== 0) expectedPairs.push(`${pitch}<-${lastPitch}`);
+  lastPitch = pitch;
   press(shownLetter());
   if (i % 3 === 2) {
     dom.flushTimers();
@@ -75,7 +89,7 @@ for (let i = 0; i < 6; i++) {
 // The first note of each line is recorded and not timed: the session's first
 // answer is not timed anyway, so of six answers over two lines, four are.
 {
-  const session = JSON.parse(Object.entries(dom.store).find(([k]) => k.includes("current"))[1]);
+  const session = stored();
   const tallies = Object.values(session.cards);
   const answered = tallies.reduce((n, t) => n + t.n, 0);
   const timed = tallies.reduce((n, t) => n + t.ms.length, 0);
@@ -83,6 +97,8 @@ for (let i = 0; i < 6; i++) {
     `${answered} answered, ${timed} timed`);
   check("the rest are timed from the answer before", tallies.flatMap((t) => t.ms).every((ms) => ms >= 800),
     tallies.flatMap((t) => t.ms).join(", "));
+  check("the first note of a line keeps no note before, the rest the one before them",
+    pairs(session) === expectedPairs.sort().join(" "), `${pairs(session)}, want ${expectedPairs.join(" ")}`);
 }
 
 // A miss holds the line: the cursor stays until the note is answered.
@@ -95,10 +111,18 @@ for (let i = 0; i < 6; i++) {
   const after = heads().findIndex((c) => c.getAttribute("aria-current") === "true");
   check("a miss holds the cursor where it is", held === before, `${before} → ${held}`);
   check("and the right answer moves it on", after === before + 1, `${before} → ${after}`);
+  // The note after the miss, missed as well: neither it nor its correction is
+  // a measurement, and nor is the note after that.
+  const before6 = stored();
+  press(notes.LETTERS.find((l) => l !== shownLetter()));
   // Finish the line, so the rows below count what they expect.
   for (let left = heads().length - after; left > 0; left--) press(shownLetter());
   dom.flushTimers();
   dom.flushFrames();
+  const missedFrom = (session) => Object.values(session.cards).flatMap((t) => t.missedFrom ?? []);
+  check("the notes after a miss keep no note before, right or wrong",
+    pairs(stored()) === pairs(before6) && missedFrom(stored()).length === 0,
+    `${pairs(stored())} · missed after ${missedFrom(stored()).join(",")}`);
 }
 
 // One note at a time is still there, and is still timed from the paint.
@@ -109,6 +133,13 @@ for (let i = 0; i < 6; i++) {
   dom.flushFrames();
   check("a line of one is a single note", heads().length === 1, `${heads().length} noteheads`);
   check("with no cursor", !dom.el("staff").children.some((c) => c.getAttribute("class") === "cursor"));
+  const nulls = (session) => Object.values(session.cards).flatMap((t) => t.from ?? []).filter((f) => f === null);
+  dom.advance(800);
+  press(shownLetter());
+  dom.flushTimers();
+  dom.flushFrames();
+  check("a note on its own keeps null for the note before", nulls(stored()).length === 1,
+    `${nulls(stored()).length} nulls`);
 }
 
 // The cheat sheet's doubled spellings. Asserted here rather than only over
@@ -133,9 +164,12 @@ for (let i = 0; i < 6; i++) {
   );
 }
 
+// The rows of the record for notes, not the breakdown open under one of them.
+const noteRows = () => dom.el("breakdown").children.filter((r) => r.getAttribute("role") === "button");
+
 // Rows for notes the range no longer asks for, faded rather than dropped.
 {
-  const before = dom.el("breakdown").children.length;
+  const before = noteRows().length;
   const set = (id, value) => {
     const s = dom.el(id);
     s.value = value;
@@ -147,8 +181,8 @@ for (let i = 0; i < 6; i++) {
   // limits actually become is whatever the clef and ledger settings can draw,
   // so the test reads them back rather than assuming it got what it asked for.
   const top = Math.max(
-    ...dom.el("breakdown").children.map((r) => {
-      const name = r.children[0].textContent;
+    ...noteRows().map((r) => {
+      const name = r.children[1].textContent;
       return notes.diatonic(name[0], Number(name.slice(1)));
     }),
   );
@@ -157,8 +191,8 @@ for (let i = 0; i < 6; i++) {
   const lowest = Number(dom.el("lowest").value);
   const highest = Number(dom.el("highest").value);
 
-  const rows = dom.el("breakdown").children.map((r) => {
-    const name = r.children[0].textContent;
+  const rows = noteRows().map((r) => {
+    const name = r.children[1].textContent;
     const dn = notes.diatonic(name[0], Number(name.slice(1)));
     return { name, dn, faded: (r.getAttribute("class") ?? "").includes("is-out") };
   });
@@ -172,12 +206,53 @@ for (let i = 0; i < 6; i++) {
     misfiled.map((r) => r.name).join(", "));
 }
 
-check("nine answers are counted", text("stats").startsWith("9 notes"), text("stats"));
-check("all but the miss were right", text("stats").includes("89% right"), text("stats"));
+// A row opens to its note split by distance, one row at a time.
+{
+  const session = stored();
+  const measured = (r) => {
+    const t = session.cards[r.dataset.card];
+    return [...(t?.from ?? []), ...(t?.missedFrom ?? [])].some((f) => typeof f === "string");
+  };
+  const box = () => dom.el("breakdown").children.filter((c) => c.className === "bar-bands");
+  const row = (card) => noteRows().find((r) => r.dataset.card === card);
+
+  const first = noteRows().find(measured);
+  first.dispatch("click");
+  const opened = row(first.dataset.card);
+  const under = dom.el("breakdown").children[dom.el("breakdown").children.indexOf(opened) + 1];
+  check("clicking a note opens it", opened.getAttribute("aria-expanded") === "true" && opened.children[0].textContent === "−",
+    `${opened.getAttribute("aria-expanded")} ${opened.children[0].textContent}`);
+  check("to a row per distance under it", under?.className === "bar-bands" &&
+    under.children.filter((c) => c.className === "bar-row is-band").length === 3,
+    under?.children.map((c) => c.className).join(", "));
+
+  const other = noteRows().find((r) => r.dataset.card !== first.dataset.card);
+  other.dispatch("keydown", { key: "Enter", preventDefault() {} });
+  check("opening another closes the first", box().length === 1 &&
+    row(first.dataset.card).getAttribute("aria-expanded") === "false" &&
+    row(first.dataset.card).children[0].textContent === "+");
+
+  // Not every run answers a note only as the first of its line; when one
+  // did, it says why it has nothing to show.
+  const unmeasured = noteRows().find((r) => !measured(r));
+  if (unmeasured) {
+    unmeasured.dispatch("click");
+    check("a note with no note before it recorded says why",
+      box()[0]?.children[0]?.className === "bar-empty", box()[0]?.children.map((c) => c.className).join());
+  }
+  noteRows().find((r) => r.getAttribute("aria-expanded") === "true")?.dispatch("click");
+  check("and clicking the open one closes it", box().length === 0);
+}
+
+check("ten answers are counted", text("stats").startsWith("10 notes"), text("stats"));
+check("all but the two misses were right", text("stats").includes("80% right"), text("stats"));
 check("they are broken down by note", dom.el("breakdown").children.length > 0);
 check("the key to the bars is shown", !dom.el("breakdown-key").hidden);
 check("the session was saved", Object.keys(dom.store).some((k) => k.includes("current")),
   Object.keys(dom.store).join(", "));
+
+// Taken before the MIDI key below changes deck, which ends the session.
+const answered = stored();
 
 // A MIDI key sounds only with the setting on — most keyboards are silent.
 {
@@ -197,6 +272,32 @@ check("the session was saved", Object.keys(dom.store).some((k) => k.includes("cu
   check("and sounds with it on", dom.sounded.length > before, `${dom.sounded.length - before} partials`);
 }
 
+// The notes before each answer survive the session ending, an export and an
+// import: storage passes a session through whole, and this is what would
+// catch it starting to pick fields out of one.
+{
+  const store = await import("../storage.js");
+  const history = await import("../history.js");
+  // Plus a timed miss, which this run's misses — each the first of a line or
+  // straight after another miss — never are.
+  const session = structuredClone(answered);
+  const card = Object.keys(session.cards).find((id) => session.cards[id].from.some((f) => typeof f === "string"));
+  session.cards[card].missedFrom = ["C4"];
+  store.saveCurrentSession(session);
+  store.closeCurrentSession();
+
+  const file = JSON.stringify(store.exportAll());
+  for (const k of Object.keys(dom.store)) if (/\.(sessions|current)\./.test(k)) delete dom.store[k];
+  store.importAll(JSON.parse(file));
+
+  const back = store.loadSessions().findLast((s) => s.started === session.started);
+  check("a session's notes before survive closing, export and import",
+    JSON.stringify(back?.cards) === JSON.stringify(session.cards), JSON.stringify(back?.cards[card]));
+  const bands = history.byBand(card.split(":")[1], history.totalsByCard([back])?.get(card), "typed");
+  check("and are read back by distance", bands.reduce((n, b) => n + b.timed + b.missed, 0) > 1,
+    bands.map((b) => `${b.key}:${b.timed}/${b.missed}`).join(" "));
+}
+
 for (const line of problems) console.log(`FAIL ${line}`);
-console.log(`${35 - problems.length} passed, ${problems.length} failed  (app boot)`);
+console.log(`${checked - problems.length} passed, ${problems.length} failed  (app boot)`);
 process.exit(problems.length === 0 ? 0 : 1);

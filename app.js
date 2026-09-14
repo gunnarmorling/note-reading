@@ -46,6 +46,8 @@ const state = {
   mode: "typed",
   /** @type {import("./history.js").Session} the sitting being recorded */
   session: history.newSession(Date.now()),
+  /** @type {string | null} the card whose row in the record is open */
+  openNote: null,
   /** @type {string | null} name of a connected MIDI device, if any */
   midiDevice: null,
   /**
@@ -523,7 +525,11 @@ function resolve(correct, answerLabel, { at = performance.now(), mode = "typed" 
   state.totals.answered += 1;
   if (correct) state.totals.correct += 1;
 
-  state.session = history.recordAnswer(state.session, { id, correct, latencyMs, at: now });
+  // The note before this one in the line, which in a line is also the answer
+  // the clock started from. None for the first note of a line or a note on
+  // its own: the reader had nothing on this screen to read from.
+  const previous = state.index > 0 ? label(state.line[state.index - 1]) : null;
+  state.session = history.recordAnswer(state.session, { id, correct, latencyMs, at: now, previous });
   store.saveCurrentSession(state.session);
 
   state.head?.classList.add(correct ? "is-correct" : "is-wrong");
@@ -1440,7 +1446,10 @@ function paintRecord() {
     `Bars are the median for each note, against the slowest of them; the line is the ` +
     `${secs(aimMs())}s to aim for, and amber is inside it. × is how many times it came up — ` +
     "a couple of tries makes a rough median, so the longer spans are where the real ones are. " +
-    "Faded rows are notes the range no longer asks for.";
+    "Faded rows are notes the range no longer asks for. Open a note to split it by how far " +
+    (state.mode === "played"
+      ? "the note before it was, in semitones — a stand-in for how far the hand moved."
+      : "the note before it was, in staff steps — a stand-in for how far the eye jumped.");
   paintNoteRows(ui.breakdown, tallies);
 }
 
@@ -1500,10 +1509,37 @@ function paintNoteRows(into, tallies) {
   // currently asked.
   const asked = new Set(eligibleIds());
 
+  // One note open at a time, and only while it is still in the panel.
+  if (!summarised.some((row) => row.id === state.openNote)) state.openNote = null;
+
   into.replaceChildren();
   for (const row of summarised) {
     const line = document.createElement("div");
     line.className = asked.has(row.id) ? "bar-row" : "bar-row is-out";
+    const open = row.id === state.openNote;
+    line.setAttribute("role", "button");
+    line.setAttribute("tabindex", "0");
+    line.setAttribute("aria-expanded", String(open));
+    line.dataset.card = row.id;
+    const toggle = () => {
+      state.openNote = open ? null : row.id;
+      paintRecord();
+      // The row was redrawn; keep the keyboard where it was.
+      into.children.find((c) => c.dataset?.card === row.id)?.focus?.();
+    };
+    line.addEventListener("click", toggle);
+    line.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      toggle();
+    });
+
+    // In a slot of its own, so that a row being something to open shows
+    // before anyone hovers over it.
+    const sign = document.createElement("span");
+    sign.className = "bar-toggle";
+    sign.setAttribute("aria-hidden", "true");
+    sign.textContent = open ? "−" : "+";
 
     const name = document.createElement("span");
     name.className = "bar-name";
@@ -1537,9 +1573,83 @@ function paintNoteRows(into, tallies) {
     if (Number.isFinite(row.medianMs) && row.medianMs <= aim) time.classList.add("is-fluent");
     time.textContent = Number.isNaN(row.medianMs) ? "–" : `${secs(row.medianMs)}s`;
 
-    line.append(name, track, tries, acc, time);
+    line.append(sign, name, track, tries, acc, time);
     into.appendChild(line);
+    if (open) into.appendChild(bandRows(row.id, tallies.find(([id]) => id === row.id)[1]));
   }
+}
+
+/**
+ * One note's record split by how far the note before it was, under its row.
+ * Scaled against the slowest band of this note and the aim, not against the
+ * other notes: the question is how this note's distances compare.
+ *
+ * @param {string} id
+ * @param {import("./history.js").Tally} tally
+ * @returns {HTMLElement}
+ */
+function bandRows(id, tally) {
+  const box = document.createElement("div");
+  box.className = "bar-bands";
+  const bands = history.byBand(label(cardPitch(id)), tally, cardMode(id));
+
+  if (bands.every((b) => b.timed + b.missed === 0)) {
+    const empty = document.createElement("p");
+    empty.className = "bar-empty";
+    empty.textContent =
+      state.settings.sequence === 1
+        ? "One note at a time has no note before it to measure from."
+        : "Answer a line of two or more to see this.";
+    box.appendChild(empty);
+    return box;
+  }
+
+  const aim = aimMs();
+  const medians = bands.map((b) => b.medianMs).filter(Number.isFinite);
+  const slowest = Math.max(...medians, aim);
+
+  for (const band of bands) {
+    const line = document.createElement("div");
+    line.className = "bar-row is-band";
+
+    const name = document.createElement("span");
+    name.className = "bar-name";
+    name.textContent = band.label;
+
+    const track = document.createElement("span");
+    track.className = "bar-track";
+    if (band.timed > 0) {
+      const fill = document.createElement("span");
+      fill.className = "bar-fill";
+      fill.style.width = `${Math.max(3, (band.medianMs / slowest) * 100).toFixed(1)}%`;
+      if (band.medianMs <= aim) fill.classList.add("is-fluent");
+      track.appendChild(fill);
+      const mark = document.createElement("span");
+      mark.className = "bar-mark";
+      mark.style.left = `${((aim / slowest) * 100).toFixed(1)}%`;
+      track.appendChild(mark);
+    } else {
+      track.classList.add("is-empty");
+      track.textContent = "not yet";
+    }
+
+    const tries = document.createElement("span");
+    tries.className = "bar-count";
+    tries.textContent = `×${band.timed + band.missed}`;
+
+    const acc = document.createElement("span");
+    acc.className = "bar-accuracy";
+    acc.textContent = Number.isNaN(band.accuracy) ? "–" : `${Math.round(band.accuracy * 100)}%`;
+
+    const time = document.createElement("span");
+    time.className = "bar-time";
+    if (band.medianMs <= aim) time.classList.add("is-fluent");
+    time.textContent = `${secs(band.medianMs)}${band.timed > 0 ? "s" : ""}`;
+
+    line.append(name, track, tries, acc, time);
+    box.appendChild(line);
+  }
+  return box;
 }
 
 /**

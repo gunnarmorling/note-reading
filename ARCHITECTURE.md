@@ -359,6 +359,30 @@ hundred fit comfortably. Every latency rather than a running mean, because a
 mean is not a median and there is no recovering one later. What is lost is the
 order the trials came in.
 
+**Where each answer came from.** Beside `ms`, a tally keeps `from`: for each
+timed answer, the note before it in the line, spelt as the card id spells it
+(`"A4"`), or `null` when there was none — which, the first note of a line
+never being timed, means a note on its own. `missedFrom` is the same for each
+wrong answer that would have been timed. Both are pushed under exactly the
+condition `ms` is (and its mirror), in the same place in `recordAnswer`, so
+`from` cannot come apart from `ms`, and an untimed answer — the note after a
+miss, anything over ten seconds — counts neither for a distance nor against
+it.
+
+The pitch and never a distance, because the two decks measure distance
+differently — staff steps for the eye, semitones for the hand — and once
+accidentals arrive the two stop moving together; a stored step count would
+need a migration. Distances are worked out when the record is read
+(`history.distance`), parsing the pitch itself rather than through `cardPitch`,
+which would drop an accidental. Measured on a real export, the two fields take
+an answer from about 11 bytes to at most 19, a median session to about 1KB.
+
+A tally whose `from` is missing or not one entry per time is left out of
+everything split by distance and counted everywhere else. `totalsByCard`
+merges such a session's times with `undefined` in place of the notes before,
+so one damaged session cannot pair every other session's times with the
+wrong notes. There is no migration: the record is started afresh with this.
+
 `paintRecord` draws all four spans through one row builder and one summary
 sentence, because they are the same question asked of different lengths of
 time — a session that looked
@@ -366,6 +390,22 @@ like a different kind of thing from a month was the arrangement this replaced.
 Every span, the session included, is read off the session record rather than
 counted alongside it, so no two of them can disagree: `sessionTallies` folds
 the sitting in progress, `history.sessionsIn` the rest.
+
+**A note's row opens to its split by distance** — how far the note before it
+was, in three bands (a step or two, up to a fifth, wider), each with its
+median, count and accuracy, scaled against the slowest band of that note. One
+row open at a time, kept open across repaints while the note is still in the
+panel. A row rather than a toggle or a column, because the question it answers
+is about one note — C5 after A4 against C5 after C4 — and it takes no room
+until asked. What it does not show is whether distance slows reading across
+notes generally; that wants a view of its own.
+
+It is a proxy, and the key text says so. The drill cannot tell whether a hand
+moved: a near note may still have been reached by shifting, a far one may sit
+inside the span of the hand. It sees nothing wider than a tenth, since
+`SEQUENCE_SPAN` keeps a line inside one, and the wide band fills slowly,
+because the ordering prefers steps and thirds. The band edges are placeholders
+(`history.BANDS`) until recordings say where they belong.
 
 A tab shows nothing when its deck has nothing over that span, asked of the
 record rather than of a "has practice begun" flag — such a flag has to be

@@ -22,8 +22,9 @@ import {
 } from "../sequence.js";
 import { mergeClefIds, renameLegacyIds, tagUntaggedIds } from "../storage.js";
 import {
-  SESSION_GAP_MS, WINDOWS, continuesSession, newSession, overall, previousRange, recordAnswer,
-  sessionsBetween, sessionsIn, startOfDay, summarise, totalsByCard,
+  BANDS, SESSION_GAP_MS, WINDOWS, byBand, byPrevious, continuesSession, distance, newSession,
+  overall, previousRange, recordAnswer, sessionsBetween, sessionsIn, startOfDay, summarise,
+  totalsByCard,
 } from "../history.js";
 import {
   AMBIGUOUS_CENTS, NOISE_INITIAL, ONSET_RATIO, SILENCE_FLOOR, TUNING_DEADBAND_CENTS, WINDOW,
@@ -596,6 +597,78 @@ export function run(report) {
       eq("trials from both", c.n, 5);
       eq("timings from both", c.medianMs, 800);
       eq("and accuracy over the lot", c.accuracy, 0.6);
+    }
+
+    // --- the note before -------------------------------------------------
+
+    {
+      const t0 = 1_700_000_000_000;
+      const answer = (s, correct, latencyMs, previous) =>
+        recordAnswer(s, { id: "typed:C5", correct, latencyMs, at: t0, previous });
+      let s = newSession(t0);
+      s = answer(s, true, 900, "A4");
+      s = answer(s, false, 800, "C4");
+      s = answer(s, true, NaN, "E4"); // the note after a miss: not timed
+      s = answer(s, false, NaN, "E4"); // nor is a wrong one there
+      s = answer(s, true, 12_000, "G4"); // too long to be a time
+      s = answer(s, true, 1_400, null); // a note on its own
+      s = answer(s, true, 2_100, "C4");
+      const t = s.cards["typed:C5"];
+      eq("a timed right answer keeps the note before it", t.from.join(), "A4,,C4");
+      eq("and a note on its own keeps null, not nothing", t.from[1], null);
+      eq("a timed wrong answer keeps it among the misses", t.missedFrom.join(), "C4");
+      eq("from lines up with the times, whatever else was answered", t.from.length, t.ms.length);
+      eq("an answer with no previous given is null", recordAnswer(newSession(t0),
+        { id: "typed:C5", correct: true, latencyMs: 700, at: t0 }).cards["typed:C5"].from[0], null);
+
+      eq("steps on the naming deck", distance("A4", "C5", "typed"), 2);
+      eq("semitones on the playing deck", distance("A4", "C5", "played"), 3);
+      eq("downward is negative", distance("C5", "C4", "typed"), -7);
+      eq("E to F is a step", distance("E4", "F4", "typed"), 1);
+      eq("and one semitone", distance("E4", "F4", "played"), 1);
+      eq("H to C is a step", distance("H3", "C4", "typed"), 1);
+      eq("and one semitone", distance("H3", "C4", "played"), 1);
+      eq("D to E is a step but two semitones", distance("D4", "E4", "played"), 2);
+      ok("nothing to measure from an unreadable pitch", Number.isNaN(distance("X9", "C4", "typed")));
+
+      const grouped = byPrevious(t);
+      eq("grouped by the note before", [...grouped.keys()].sort().join(), "A4,C4");
+      eq("with the times after it", grouped.get("C4").ms.join(), "2100");
+      eq("and the misses", grouped.get("C4").missed, 1);
+
+      const bands = byBand("C5", t, "typed");
+      eq("one row per band", bands.length, BANDS.length);
+      eq("A4 to C5 is a step or two", bands[0].medianMs, 900);
+      eq("C4 to C5 is wider", bands[2].medianMs, 2100);
+      eq("with its miss beside its time", bands[2].accuracy, 0.5);
+      eq("a band nothing reached has no median", bands[1].timed + bands[1].missed, 0);
+      ok("and no accuracy", Number.isNaN(bands[1].accuracy) && Number.isNaN(bands[1].medianMs));
+      // On the playing deck the same thirds are counted in semitones.
+      const played = byBand("C5", { n: 2, correct: 2, ms: [600, 700], from: ["A4", "F4"] }, "played");
+      eq("a minor third is a step or two in semitones", played[0].timed, 1);
+      eq("a fifth is up to a fifth", played[1].timed, 1);
+    }
+    {
+      // Merging keeps each time with its note, and a session that lost track
+      // of which note came before gives up only that.
+      const totals = totalsByCard([
+        { started: 1, lastAt: 1, cards: { "typed:C5": { n: 2, correct: 2, ms: [900, 800], from: ["A4", null], missedFrom: [] } } },
+        { started: 2, lastAt: 2, cards: { "typed:C5": { n: 2, correct: 1, ms: [600], from: ["H4"], missedFrom: ["C4"] } } },
+        { started: 3, lastAt: 3, cards: { "typed:C5": { n: 3, correct: 2, ms: [500, 400], missedFrom: ["E4"] } } },
+        { started: 4, lastAt: 4, cards: { "typed:C5": { n: 2, correct: 2, ms: [300, 200], from: ["G4"] } } },
+      ]);
+      const c = totals.get("typed:C5");
+      eq("notes before are merged across sessions", c.from.slice(0, 3).join(), "A4,,H4");
+      eq("and so are the misses", c.missedFrom.join(), "C4");
+      eq("still one per time", c.from.length, c.ms.length);
+      eq("every time is still counted", summarise(c).medianMs, 500);
+      eq("trials too", c.n, 9);
+      eq("misses from a session out of line are dropped with its notes", c.missedFrom.join(), "C4");
+      const grouped = byPrevious(c);
+      eq("a session without them, or out of line, adds nothing by distance",
+        [...grouped.values()].reduce((n, g) => n + g.ms.length, 0), 2);
+      eq("a tally out of line on its own is left out entirely",
+        byPrevious({ n: 3, correct: 2, ms: [1, 2], from: ["A4"], missedFrom: ["C4"] }).size, 0);
     }
 
     // --- weighting -------------------------------------------------------

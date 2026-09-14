@@ -168,7 +168,7 @@ start or finish by hand. **The first answer of a session is never timed** — th
 clock would be measuring you finding the keys.
 
 The panel reads the record back over four spans: session, today, 7 days, 30
-days. Rolling days, not calendar weeks. Two things about the rows are not
+days. Rolling days, not calendar weeks. A few things about the rows are not
 obvious:
 
 - **A bar is that note's median against the slowest note in the same panel**,
@@ -183,6 +183,12 @@ obvious:
   come back to — and, being the ones you had least practice at, they sort to
   the top and read as your worst problems. They are faded rather than dropped,
   the way the cheat sheet fades what the limits exclude.
+- **A note opens to how far the note before it was.** Click a row to split its
+  times by the jump from the previous note in the line: staff steps when
+  naming, semitones when playing. It separates *cannot read it* from *cannot
+  get to it*, as far as distance can stand in for either — it cannot see a
+  hand move. Notes on their own and first notes of a line have nothing before
+  them, so with `Line` at one note there is nothing to show.
 
 ## Cheat sheet
 

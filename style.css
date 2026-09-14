@@ -742,7 +742,7 @@ main {
 
 .bar-row {
   display: grid;
-  grid-template-columns: 2.4em 1fr 2.4em 2.8em 3.2em;
+  grid-template-columns: 1em 2.4em 1fr 2.4em 2.8em 3.2em;
   gap: 8px;
   align-items: center;
   font-size: 12px;
@@ -755,6 +755,57 @@ main {
    included: it is the row that is out of play, not one column of it. */
 .bar-row.is-out {
   opacity: 0.45;
+}
+
+.bar-row[role="button"] {
+  cursor: pointer;
+}
+
+.bar-row[role="button"]:focus-visible {
+  outline: 1px solid var(--muted);
+  outline-offset: 2px;
+}
+
+.bar-toggle {
+  color: var(--faint);
+  text-align: center;
+}
+
+.bar-row[aria-expanded="true"] .bar-toggle {
+  color: var(--text);
+}
+
+/* One note's distances, indented under its row: the sign's slot and the
+   name's, given to a band's label. */
+.bar-bands {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 6px;
+}
+
+.bar-row.is-band {
+  grid-template-columns: 1em 6.2em 1fr 2.4em 2.8em 3.2em;
+  font-size: 11px;
+}
+
+.bar-row.is-band .bar-name {
+  grid-column: 2;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.bar-track.is-empty {
+  height: auto;
+  background: none;
+  color: var(--faint);
+  font-family: var(--sans);
+}
+
+.bar-empty {
+  margin: 0 0 6px 1.8em;
+  color: var(--faint);
+  font-size: 11px;
 }
 
 .bar-name {
