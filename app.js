@@ -122,9 +122,6 @@ function collectElements() {
     cheatCount: need("cheat-count"),
     nameDeck: need("name-deck"),
     playDeck: need("play-deck"),
-    nameOpen: need("name-open"),
-    nameMenu: need("name-menu"),
-    nameSplit: need("name-split"),
     playOpen: need("play-open"),
     playMenu: need("play-menu"),
     playSplit: need("play-split"),
@@ -153,6 +150,8 @@ function collectElements() {
     debugBar: need("debug-bar"),
     debugTime: need("debug-time"),
     debugSave: need("debug-save"),
+    settingsMenu: need("settings-menu"),
+    settingsButton: need("settings-button"),
     playerMenu: need("player-menu"),
     playerButton: need("player-button"),
     playerName: need("player-name"),
@@ -180,12 +179,13 @@ function clefNames() {
 }
 
 /**
- * Change decks. Only ever called from the two deck buttons: the deck is a
- * choice, and deriving it from whatever hardware happened to announce itself
- * was a mistake. A MIDI keyboard connects a second or so after the page
- * loads, which meant the deck could flip and the drill deal a fresh note
- * while you were looking at the old one — and then time you from the moment
- * of the swap rather than from when you first saw the note.
+ * Change decks. Only ever called from the two deck buttons, the source rows,
+ * and a key played on a MIDI keyboard: the deck is a choice, and deriving it
+ * from whatever hardware happened to announce itself was a mistake. A MIDI
+ * keyboard connects a second or so after the page loads, which meant the
+ * deck could flip and the drill deal a fresh note while you were looking at
+ * the old one — and then time you from the moment of the swap rather than
+ * from when you first saw the note.
  *
  * @param {string} mode
  */
@@ -286,16 +286,17 @@ function startListening() {
 const POPOVER = typeof HTMLElement !== "undefined" && "popover" in HTMLElement.prototype;
 
 /**
- * The menus that hang off a button: one per deck, and the player's.
+ * The menus that hang off a button: the playing deck's, the settings and the
+ * player's.
  *
- * `anchor` is what the menu lines up under — for a deck that is the whole
+ * `anchor` is what the menu lines up under — for the deck that is the whole
  * split button rather than its caret, so the menu's edge meets the button's.
- * The player's hangs from the right, being at the right of the header.
+ * The two at the right of the header hang from the right.
  */
 function popmenus() {
   return [
-    { menu: ui.nameMenu, trigger: ui.nameOpen, anchor: ui.nameSplit, align: "left" },
     { menu: ui.playMenu, trigger: ui.playOpen, anchor: ui.playSplit, align: "left" },
+    { menu: ui.settingsMenu, trigger: ui.settingsButton, anchor: ui.settingsButton, align: "right" },
     { menu: ui.playerMenu, trigger: ui.playerButton, anchor: ui.playerButton, align: "right" },
   ];
 }
@@ -372,7 +373,7 @@ function wireMenus() {
       for (const entry of popmenus()) if (menuShowing(entry.menu)) placeMenu(entry);
     });
   }
-  showMenu(ui.nameMenu, false);
+  showMenu(ui.settingsMenu, false);
   paintMenuState();
 }
 
@@ -616,6 +617,27 @@ function answerMidi(midiNote, at) {
   // From an instrument we can check the octave too, which is the skill that
   // actually matters: staff position to the key under your finger.
   resolve(midiNote === toMidi(state.current), midiNoteName(midiNote), { at, mode: "played" });
+}
+
+/**
+ * A key pressed on the MIDI keyboard. Sounded whether or not it answers
+ * anything — most keyboards make no sound of their own, and a key that is
+ * silent only some of the time reads as a fault. Never while the microphone
+ * is open, for the same reason as a typed letter.
+ * @param {number} midiNote
+ */
+function soundAndAnswerMidi(midiNote) {
+  if (state.settings.sound && !audio.listening()) audio.play(midiNote);
+  // Played into the naming deck, a key was scored as a played answer — into
+  // the playing deck's record, off screen, while the panel in front of you
+  // went on saying "Press a letter to start". A key pressed is as deliberate
+  // as the deck button, so it takes you to the playing deck instead. It does
+  // not answer: the line it would answer is dealt by the switch, unseen.
+  if (state.mode === "typed") {
+    setMode("played");
+    return;
+  }
+  answerMidi(midiNote);
 }
 
 /** @param {number} n */
@@ -1717,7 +1739,7 @@ function init() {
     else startListening();
   });
 
-  midi.connect(answerMidi, (status) => {
+  midi.connect(soundAndAnswerMidi, (status) => {
     // Noted, not acted on: a keyboard appearing does not change what you
     // chose to practise. It just means Play the notes needs no microphone.
     state.midiDevice = status.deviceName;

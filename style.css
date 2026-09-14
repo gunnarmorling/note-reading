@@ -106,6 +106,7 @@ h1 {
 .bar-end {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
 }
 
 /* Everything you set, between the title and the player: which deck, a rule,
@@ -379,7 +380,15 @@ select:hover,
   line-height: 1.5;
 }
 
-/* Sounding the note back: a setting, in the naming deck's own menu. */
+/* The settings button: a cog where the player's chip has a name. */
+.cog {
+  width: 15px;
+  height: 15px;
+  fill: currentColor;
+  vertical-align: -3px;
+}
+
+/* Sounding the note back: a setting, in the settings menu. */
 .setting-check {
   display: flex;
   align-items: center;

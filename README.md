@@ -48,7 +48,8 @@ They are separate records: separate weights, separate history, and separate
 targets — a second for naming, a second and a half for playing. Pooled, a note
 you can name but cannot find reads as mastered, and that gap is the one worth
 seeing. The letter keys are dimmed on the playing deck, where they have
-nothing to answer: a letter cannot say which octave.
+nothing to answer: a letter cannot say which octave. A key played on a MIDI
+keyboard while naming takes you to the playing deck, on a fresh line.
 
 Worth following: **one deck per sitting.** The same stimulus with two response
 mappings carries a real switching cost. Changing deck starts a fresh session.
@@ -92,9 +93,10 @@ other note is timed from your answer to the one before it, which is the time
 worth having: reading a note in context, not finding a line on a blank page. If a note
 turns out to be unanswerable, changing any setting moves the drill on.
 
-`Hear the note when I answer`, in the naming deck's menu, sounds what you
-typed at the octave nearest the note on screen. Off by default, and never
-while the microphone is open: that would be a loop.
+`Hear the note when I answer`, in the settings menu (the cog next to the
+player), sounds what you typed at the octave nearest the note on screen, or
+the key you pressed on a MIDI keyboard — most make no sound of their own. Off
+by default, and never while the microphone is open: that would be a loop.
 
 ## Playing into a microphone
 

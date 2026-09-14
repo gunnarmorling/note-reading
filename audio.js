@@ -1498,7 +1498,8 @@ let speaker = null;
 /**
  * Sound one note.
  *
- * Only ever called for a note that was typed or clicked. Playing one back
+ * Only ever called for a note that was typed, clicked or pressed on a MIDI
+ * keyboard. Playing one back
  * while the microphone is listening would be a loop: the detector would hear
  * the answer and take it for the next one, which is why the caller checks.
  *

@@ -12,32 +12,15 @@
         <h1>Note reading</h1>
 
         <!-- Everything you set, on one line and in two groups: which deck,
-             then what it asks for. The decks are split buttons — the deck is
-             the button, and its caret opens what that deck has to set up,
-             anchored to the button so opening it covers the page rather than
-             pushing it down. -->
+             then what it asks for. Playing is a split button — the deck is
+             the button, and its caret opens what it is played into, anchored
+             to the button so opening it covers the page rather than pushing
+             it down. Naming has nothing of its own to set up. -->
         <div class="middle">
           <div class="decks">
-            <span id="name-split" class="deck-split">
-              <button id="name-deck" class="deck" type="button" aria-pressed="true">
-                Name the notes
-              </button>
-              <button
-                id="name-open"
-                class="deck-caret"
-                type="button"
-                popovertarget="name-menu"
-                aria-expanded="false"
-                title="Options for naming"
-              ></button>
-
-              <div id="name-menu" class="popmenu" popover>
-                <p class="menu-head">Sound</p>
-                <label class="setting-check" for="sound">
-                  <input id="sound" type="checkbox" /> Hear the note when I answer
-                </label>
-              </div>
-            </span>
+            <button id="name-deck" class="deck" type="button" aria-pressed="true">
+              Name the notes
+            </button>
 
             <span id="play-split" class="deck-split">
               <button id="play-deck" class="deck" type="button" aria-pressed="false">
@@ -128,6 +111,29 @@
         </div>
 
         <div class="bar-end">
+          <!-- Settings that belong to neither deck in particular. -->
+          <button
+            id="settings-button"
+            class="chip"
+            type="button"
+            popovertarget="settings-menu"
+            aria-expanded="false"
+            aria-label="Settings"
+            title="Settings"
+          >
+            <svg class="cog" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M19.14 12.94a7.1 7.1 0 0 0 0-1.88l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96a7 7 0 0 0-1.62-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.49.42l-.36 2.54a7.3 7.3 0 0 0-1.62.94l-2.39-.96a.5.5 0 0 0-.61.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58a7.1 7.1 0 0 0 0 1.88l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .61.22l2.39-.96c.5.38 1.04.7 1.62.94l.36 2.54a.5.5 0 0 0 .49.42h3.84a.5.5 0 0 0 .5-.42l.36-2.54a7 7 0 0 0 1.62-.94l2.39.96a.5.5 0 0 0 .61-.22l1.92-3.32a.5.5 0 0 0-.12-.64zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"
+              />
+            </svg>
+          </button>
+          <div id="settings-menu" class="popmenu" popover>
+            <p class="menu-head">Sound</p>
+            <label class="setting-check" for="sound">
+              <input id="sound" type="checkbox" /> Hear the note when I answer
+            </label>
+          </div>
+
           <button
             id="player-button"
             class="chip"

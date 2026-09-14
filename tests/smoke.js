@@ -20,6 +20,11 @@ const check = (what, ok, detail = "") => {
   if (!ok) problems.push(detail ? `${what}  — ${detail}` : what);
 };
 
+// One MIDI keyboard, for the app to find when it asks.
+const keyboard = { name: "Stub keys", onmidimessage: null };
+navigator.requestMIDIAccess = async () => ({ inputs: new Map([["k", keyboard]]), onstatechange: null });
+const pressMidi = (note) => keyboard.onmidimessage({ data: [0x90, note, 100] });
+
 // Importing app.js is what boots it: the module ends by calling init().
 await import("../app.js");
 dom.flushFrames();
@@ -36,7 +41,7 @@ check("the tabs are built", dom.el("tabstrip").children.length === 4);
 check("the player has a name", text("player-name").length > 0);
 check("nothing is listening, so the strike log is hidden", dom.el("listen").hidden);
 check("and there is nothing to test with", dom.el("check").disabled && dom.el("checking").hidden);
-check("the menus start shut", dom.el("name-menu").hidden && dom.el("play-menu").hidden);
+check("the menus start shut", dom.el("settings-menu").hidden && dom.el("play-menu").hidden);
 check("the cheat sheet says what is in play", text("cheat-count").includes("in play"), text("cheat-count"));
 
 // Which letter is being asked: the notehead the cursor is on, its y read back
@@ -174,6 +179,24 @@ check("the key to the bars is shown", !dom.el("breakdown-key").hidden);
 check("the session was saved", Object.keys(dom.store).some((k) => k.includes("current")),
   Object.keys(dom.store).join(", "));
 
+// A MIDI key sounds only with the setting on — most keyboards are silent.
+{
+  await Promise.resolve(); // let connect() finish; setTimeout is the stub's own
+  check("the MIDI keyboard is found", text("midi-status") === "Stub keys", text("midi-status"));
+  const before = dom.sounded.length;
+  pressMidi(60);
+  check("a MIDI key is silent with the setting off", dom.sounded.length === before);
+  check("a MIDI key on the naming deck moves to the playing deck",
+    dom.el("play-deck").getAttribute("aria-pressed") === "true");
+  dom.flushFrames();
+  check("without scoring the key that moved it", text("stats").includes("Play a note"), text("stats"));
+  const sound = dom.el("sound");
+  sound.checked = true;
+  sound.dispatch("change");
+  pressMidi(60);
+  check("and sounds with it on", dom.sounded.length > before, `${dom.sounded.length - before} partials`);
+}
+
 for (const line of problems) console.log(`FAIL ${line}`);
-console.log(`${30 - problems.length} passed, ${problems.length} failed  (app boot)`);
+console.log(`${35 - problems.length} passed, ${problems.length} failed  (app boot)`);
 process.exit(problems.length === 0 ? 0 : 1);

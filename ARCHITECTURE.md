@@ -68,16 +68,19 @@ settings compose. Each field's label sits above its control, which is what
 lets one bar hold the lot; it wraps to a second line by itself when the window
 cannot.
 
-**Each deck is a split button.** The deck is the button, and its caret opens
-what that deck has to set up. Naming has one thing to set: whether the note
-sounds when you answer. Playing has what it is being fed by — the MIDI
-keyboard or the microphone, as two selectable rows, with `Tune` under them.
-Neither menu is a mode.
+**Playing is a split button.** The deck is the button, and its caret opens
+what it is fed by — the MIDI keyboard or the microphone, as two selectable
+rows, with `Tune` under them. The menu is not a mode. Naming has nothing of
+its own to set up, so it is a plain button.
 
-Both menus, and the player's, are **popovers**. The browser draws them in its
-own top layer, which is the whole reason to use one: a popover cannot be laid
-out in the flow of the page, cannot be clipped by an ancestor, and needs no
-z-index. The browser also closes it on a click elsewhere or on Escape, closes
+**The settings menu**, a cog next to the player, holds what belongs to
+neither deck: for now, whether the note sounds when you answer. That applies
+to a typed letter and to a MIDI key, and never while the microphone is open.
+
+That menu, the playing deck's and the player's are all **popovers**. The
+browser draws them in its own top layer, which is the whole reason to use one:
+a popover cannot be laid out in the flow of the page, cannot be clipped by an
+ancestor, and needs no z-index. The browser also closes it on a click elsewhere or on Escape, closes
 any other one when a second opens, and handles focus.
 
 The cost is the other half of the same fact: the top layer is not laid out by
