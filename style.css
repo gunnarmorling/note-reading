@@ -556,6 +556,58 @@ main {
   color: var(--hot-lit);
 }
 
+/* --- listening ----------------------------------------------------------- */
+
+/* Under the verdict and as wide as the keys, so the level and what became of
+   each strike sit where the eye already is while playing. */
+.listen {
+  max-width: 420px;
+  margin: 0 auto 16px;
+}
+
+.listen .meter {
+  height: 8px;
+}
+
+.strikes {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  min-height: 22px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.strike {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--control-fill);
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.strike.is-right {
+  color: var(--warm-lit);
+}
+
+.strike.is-wrong {
+  color: var(--hot-lit);
+}
+
+/* A strike that answered nothing: the thing this row exists to show, so the
+   one kind with a fill of its own. */
+.strike.is-lost {
+  background: color-mix(in oklab, var(--hot) 32%, transparent);
+  color: var(--text);
+}
+
+.strike:nth-child(n + 4) {
+  opacity: 0.55;
+}
+
 /* --- the answer keys ----------------------------------------------------- */
 
 .keyboard {
@@ -864,6 +916,51 @@ main {
 
 .key-dot {
   fill: #6d5b46;
+}
+
+/* --- recording for debugging -------------------------------------------- */
+
+.debug-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.debug-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--hot-lit);
+}
+
+/* --- testing with four notes ------------------------------------------- */
+
+#checking {
+  margin: 16px 0 0;
+  text-align: center;
+}
+
+#checking-prompt {
+  margin: 0 0 8px;
+  font-size: 15px;
+  color: var(--text);
+}
+
+#checking-result {
+  margin: 0 0 13px;
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A note the test line expected and never heard. */
+#staff .notehead.is-missed {
+  fill: var(--ink-faint);
 }
 
 /* --- tuning ------------------------------------------------------------- */

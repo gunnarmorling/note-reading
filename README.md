@@ -106,9 +106,46 @@ no network code in this app at all.
   confidently; with the pedal down, a note struck over a ringing one can come
   out as something neither of you played. Steady sounds are harmless: a note
   is only looked for on a rise in level, so a fan will never answer a trial.
-- **Watch the meter** on the microphone's row. How loud a note must be is
-  measured from the room, and the threshold is marked live. If the bar never
-  reaches the mark, the microphone is closer to the room than to the piano.
+- **Watch the meter** under the staff (it is on the microphone's row too).
+  The mark is what the next strike has to clear: set by the room, and pushed
+  up for a moment by every note you play, sinking back as that note decays.
+  If the bar never reaches the mark, the microphone is closer to the room
+  than to the piano.
+- **Read the strike log** under the meter, newest first. Every strike the
+  microphone noticed is there, including the ones that answered nothing:
+
+  | | |
+  | --- | --- |
+  | `E4` | heard, amber if it was the right note and red if not |
+  | `too quiet` | the level rose, but not past the room's threshold |
+  | `no attack` | loud enough, but it rose over several frames rather than at once — most often a note struck while the last one was still ringing |
+  | `overtaken` | the next note came before this one could be named |
+  | `unclear`, `unsteady` | an attack, then no single clear pitch |
+  | `between notes` | too near halfway between two semitones to call |
+  | `E4 early` | heard fine, before there was a note to answer |
+
+  Hover a strike for the numbers behind it. Legato is fine: a note struck
+  while the last one still rings is heard by what it adds to the sound, not
+  by how much louder the sound gets. The bass is where that is weakest —
+  neighbouring low notes share most of their partials — so a missed strike
+  there is most likely a quiet one next to a note still ringing.
+
+`Test with four notes` puts C4 D4 E4 F4 on the staff for you to play over and
+over, legato or not, and counts what the microphone made of each: heard,
+missed, or heard as something else. A note that is not heard does not hold
+the line up — play the next one and it is marked missed. Nothing is
+recorded, and the drill waits until you stop. It is the way to tell a
+detector problem from a reading one: with the notes known, every miss is the
+microphone's.
+
+`Record for debugging` records the microphone until you press `Stop and save`
+under the staff (or five minutes pass), and saves one WAV file: the audio
+exactly as it arrived, with a log inside it of everything the page did with
+it — every frame the detector ran, every strike, every line and answer. It
+plays in any audio player. To report a misheard note, record a stretch where
+it happens and put the file in `tools/dsp/samples/`; `node
+tools/dsp/replay.mjs <file>` plays it back through the detector. The
+recording stays on your machine unless you send it somewhere.
 
 `Tune to my piano` asks for five notes, three strikes each, and reports how
 far off concert pitch you are. A piano untuned for years can sit half a

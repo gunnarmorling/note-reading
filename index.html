@@ -75,6 +75,12 @@
                 <button id="tune" class="toggle" type="button" title="Turn the microphone on first">
                   Tune to my piano
                 </button>
+                <button id="check" class="toggle" type="button" title="Turn the microphone on first">
+                  Test with four notes
+                </button>
+                <button id="debug-record" class="toggle" type="button" title="Turn the microphone on first">
+                  Record for debugging
+                </button>
                 <p id="tuning-result" class="source-alt" hidden></p>
               </div>
             </span>
@@ -162,6 +168,22 @@
 
         <p id="verdict" class="verdict" role="status" aria-live="polite"></p>
 
+        <!-- While the microphone is open: the level against what a strike
+             has to clear right now, and what became of the last few strikes,
+             newest first — the ones that answered nothing included. -->
+        <div id="listen" class="listen" hidden>
+          <span class="meter">
+            <span id="listen-fill" class="meter-fill"></span>
+            <span id="listen-mark" class="meter-mark"></span>
+          </span>
+          <ol id="strikes" class="strikes" aria-label="What the microphone heard, newest first"></ol>
+          <p id="debug-bar" class="debug-bar" hidden>
+            <span class="debug-dot" aria-hidden="true"></span>
+            Recording <span id="debug-time">0:00</span>
+            <button id="debug-save" class="toggle" type="button">Stop and save</button>
+          </p>
+        </div>
+
         <div class="keyboard">
           <div id="answers"></div>
           <div class="black-keys" aria-hidden="true">
@@ -178,6 +200,14 @@
           <div id="tuning-keys" class="sheet"></div>
           <p class="tuning-hint">The dot is middle C. Black keys are only there to find your place by.</p>
           <button id="tuning-stop" class="toggle" type="button">Stop tuning</button>
+        </div>
+
+        <!-- Testing the microphone against a line you know: the same four
+             notes over and over, and how many of each it made out. -->
+        <div id="checking" hidden>
+          <p id="checking-prompt"></p>
+          <p id="checking-result"></p>
+          <button id="checking-stop" class="toggle" type="button">Stop testing</button>
         </div>
       </div>
 

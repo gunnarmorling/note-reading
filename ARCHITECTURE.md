@@ -464,9 +464,195 @@ how live the room is, and those vary by orders of magnitude between setups: a
 level a close microphone crosses by breathing is one an upright across a room
 never reaches. So the drill watches the room instead — quick to follow it
 down, slow to follow it up, since the quiet moments are the evidence — and
-asks a note to be three times that (`NOISE_MARGIN`). The meter on the
-microphone's row reports both the level and the live threshold, so the
-adaptation is visible rather than a black box.
+asks a note to be three times that (`NOISE_MARGIN`).
+
+**Every strike is reported, answered or not.** `createDetector` is the
+listening loop as a pure function of one window at a time, so it can be fed
+synthesised performances, and what it returns each frame is the level, the
+bar a strike has to clear, and a list of strikes: a note heard, or the reason
+one was not. A strike dropped silently is indistinguishable, at the piano,
+from one never heard, and "too quiet or too quick?" is a question only the
+detector can answer. The page shows the level against the bar under the
+staff as well as in the menu — a popover shuts the moment you play — and the
+last six strikes beside it.
+
+The bar is `onsetBar`: the room's threshold, or `ONSET_RATIO` over the
+decaying peak, whichever is higher. The meter used to mark the first alone,
+and just after a note the second is far the higher, so the mark said a
+strike would register when it would not.
+
+Missed strikes are found by watching swells: a run of frames the level
+rises through, over once `SWELL_MS` pass without a new high. A swell that
+rose by `MISSED_RISE` and never held an attack is reported — as `quiet`
+under the room's threshold, and as `gradual` over it. And a strike that
+arrives while the one before is still being named takes over from it, the
+one before reported as `overtaken`: carrying on with it read the new note in
+its place, timed from the old attack, which on the drill is an answer to the
+wrong note.
+
+**Testing by ear.** `Test with four notes` is the drill's own detector
+against a line the player already knows, C4 to F4, round and round.
+`followLine` in `audio.js` keeps place: the note expected is heard; the note
+after it means the expected one was missed; anything else was heard wrong,
+and the line moves on either way, since a player playing legato does not
+stop for a note the microphone lost. Positions wrap, so the same four notes
+make any number of rounds, and the tally is per position. The drill is held
+while it runs, as for tuning, and nothing reaches the scheduler or the
+record.
+
+**Recording for debugging.** A real piano in a real room does things no
+synthesis anticipates, so the page can record the microphone and hand it
+over. An AudioWorklet taps the source rather than the analyser, which only
+gives a window when asked and so leaves gaps or overlaps; `currentFrame`
+says which samples each block holds, on the same clock as the
+`contextTime` logged with every detector frame. So the replay
+(`tools/dsp/replay.mjs`) can cut the very windows the page analysed, feed
+them to `createDetector` at the logged times, and print its strikes beside
+the page's — exact to a render block of 128 samples. The log rides inside
+the WAV in a chunk of its own (`nrlg`): one file, since the two are no use
+apart, a browser asks before a page downloads twice, and players skip a
+chunk they do not know. Five minutes at most, held as 16-bit.
+
+The first thing it caught was on a fake recording made to test it. A signal
+with next to no noise — which is what a close microphone in a quiet room
+is — let ordinary frames' flux fall to 2 or 3, and 2.5 times that is within
+reach of a note decaying: every note set off phantom strikes, read off
+whatever partial rose. `FLUX_MIN` puts a floor under the test.
+
+### What real recordings taught
+
+The first: ninety seconds of the drill played on a real upright, replayed. The page had
+heard 55 notes; four answers were wrong, and none of the four was a
+misreading — two were notes played wrong, and two were soft notes the
+detector never registered, so the next note of the line answered for them.
+Five soft notes in all went that way. Four things were behind it, and none
+of them had shown up in synthesis.
+
+**The display refreshed at 120Hz.** Every rate in the detector was per
+frame and set at 60: the peak follower decayed twice as fast as meant, and a
+strike's rise in the spectrum arrived in two halves, each under `FLUX_MIN`.
+Now each frame is measured against the detector as it stood at least
+`REFERENCE_MS` ago — one frame back at 60Hz, two at 120 — and the followers
+step by elapsed time.
+
+**The signal was quiet**, around −60dB: a soft note stood out of the spectrum
+thirty times over and still did not reach three times the room's level. A
+strike the spectrum is that sure of is now gated only on being something
+rather than nothing — half again the room.
+
+**A soft key is heard before its string.** A small bump in the spectrum
+came 90 to 100ms before each soft note: the key and hammer, before the
+string. Taken as the strike, it timed the note from there, was named from
+the string arriving under it, and then saw the string as a second note of
+the same name. A much stronger strike within `PRELUDE_MS` of one not yet
+named now replaces it, keeping the window from before the key to read
+against; and the same note named twice within that span is one note.
+
+**Each pitch reading fails where the other does not.** Over a loud ringing
+note the period finder hears the chord's shared period; over a note all but
+gone, a soft strike's rise is mostly noise, and reading the rise picks a low
+candidate whose many harmonics sweep that noise up — a soft F4 as D2. Both
+failures come out low, so where both readings are sure and differ, the
+higher wins. But only a period-finder reading that is news: one that names
+what the window before the strike held is the old note ringing on, and the
+small bumps a real piano makes after a note — a key let up, a damper landing
+— had it naming the old note again as the next.
+
+Replayed after all four: 62 notes heard, every one of them matching what the
+audio 150 to 235ms after its attack reads, bar one too far between semitones
+to be scored. The same lines of synthesised strings, at 60 and 120 frames a
+second, come out as they did before.
+
+**The second recording** had four wrong answers, all of them notes played
+wrong, and two notes the page named that nobody played: C♯2 and E♭2, each a
+moment after the last note of a line, each too far between semitones to be
+scored — this time. The replay did not name them, since its windows are the
+page's only to a render block, but shifting every window by a fraction of a
+block (`replay.mjs --shift`) did, at one offset or another, and in tune:
+D2 at −3¢, in the first recording too. A key let up after a line, read over
+the note it was damping.
+
+Two things tell them from notes. The candidate's own fundamental or octave
+has hardly risen — 1 to 11% of the strongest partial, against 45% and more
+for every soft note truly struck — so a candidate needs `OVER_ROOT` of it to
+be considered. That alone did not remove them: the damper's thump is low,
+and it rises right where a bass candidate's root is. What did is that little
+of the sound is new and the level is falling — under 20% of the energy risen
+since before the bump, and at most two thirds of the level kept to the
+reading. A real note had 67% or more new, even played staccato with the
+damper on the one before cutting the level by two thirds; a quarter-loud note
+struck over a loud one ringing on is only 7% new but keeps 93% of the level.
+So a reading is thrown out only when both are true — `OVER_NEWS` and
+`OVER_KEEP` — and any reading, not only one over a ringing note: with the
+note being damped all but gone, the period finder reads it instead, and named
+it half a semitone sharp. Over nine window offsets of both recordings, that
+lost the phantoms and nothing else.
+
+Neither rule has a synthesised test: noise bursts and dampers made up for
+the purpose never produced the phantom, with the rules or without. What
+guards them is the two recordings, replayed.
+
+### A note struck over a ringing one
+
+The level test cannot see it. The level is an RMS over the whole 85ms window,
+so a note struck over a ringing one enters it a few frames at a time —
+measured on synthesised strings, rises of ×1.31, ×1.16, ×1.13 frame on frame,
+where an attack over silence is ×17 — and no single frame reaches ×1.5. Nor
+could any total rise stand in for it: two notes equally loud sum to √2 of
+either. With the level test alone, a note struck 150 to 600ms into a held
+one of the same loudness went unanswered, and the strike log's first outing on a
+real piano showed exactly that: `no attack`, on the later notes of a line.
+
+**Seeing it: spectral flux.** A new note puts energy into bins that were
+quiet — its own partials — and a note merely ringing, or two beating, leaves
+every bin much where it was. So each frame's log-magnitude spectrum is
+compared with the last, each bin against the loudest of its neighbours
+before, and the rises summed. Room noise, a decaying note and two notes
+beating peak at 11 to 15; E4 struck over C4 scores 150, and 73 at a quarter
+of the loudness; a repeated note scores 119, the attack resetting partials
+already there. A strike is a frame over `FLUX_RATIO` times the running flux
+of ordinary frames, gated on the room's threshold so noise in a quiet room
+never counts. It is the whole window's spectrum and not half of it: half saw
+a strike a frame sooner, and resolved the bass so poorly that neighbouring
+low notes went unseen three times as often.
+
+**Reading it: what was added.** Asked the pitch of a window holding both
+notes, the period finder does what it should with a chord and finds the
+period they share — E4 over C4, a major third, came back as C2, and
+confidently. So a strike that lands on anything sounding keeps the window
+from before it, and `analyseOver` reads the rise between the two spectra,
+which holds the new note's partials and none of the old note's, since those
+have only decayed. The strongest partial that appeared is some harmonic of
+the new note, so the candidates are its frequency over the first ten whole
+numbers; the period finder's own peaks are no use here, having drifted — E4's
+sat 74 cents flat — or vanished. Each candidate is credited with the share
+of the rise its harmonics account for, times the share of its harmonics up
+to the highest one there that are there at all. The second is what gives a
+subharmonic away: it accounts for as much of the rise, but a third of the
+true note has two harmonics missing for every one present. Of candidates
+within `OVER_NEAR_BEST` of the best the highest is taken, and the pitch read
+back off its lowest four partials, where a string is least stretched.
+
+`tools/dsp/lines.mjs` is how the constants were settled: four-note lines of
+synthesised strings across the compass, a step to a fifth apart, random
+loudness, 150 to 700ms apart, a weak fundamental or a stiff string three
+times in ten, held or damped. Over a thousand notes each:
+
+| | heard | misheard | missed, reported | missed, silent |
+| --- | --- | --- | --- | --- |
+| level test alone, legato | 33% | 0.1% | — | 67% |
+| with flux, legato | 97.5% | 0.1% | 1.2% | 1.2% |
+| level test alone, staccato | 38% | 0% | — | 62% |
+| with flux, staccato | 98.2% | 0% | 0.8% | 1.0% |
+
+Synthesised strings have no hammer, which is hard on the level test alone —
+a real attack is sharper, so a real piano did better than a third — but the
+comparison stands. Two costs, both measured. The attack over a ringing
+note is placed to within about ±12ms rather than ±3, which is a percent of a
+one-second answer. And the pitch of a low note read this way leans on
+spectral bins two semitones wide at G2: the one misreading in the legato
+thousand was G2 as F♯2. The remaining misses are in the bass, neighbouring
+low notes sharing their first partials.
 
 The voice-call processing browsers apply to microphones by default is turned
 off explicitly. Echo cancellation, noise suppression and automatic gain
@@ -503,7 +689,7 @@ note you may well know.
 node tests/run.js
 ```
 
-287 assertions and a boot test, in about a tenth of a second. The same
+328 assertions and a boot test, in a second or two. The same
 assertions run in a browser at `/tests.html`, which is a reporter around the
 same module.
 

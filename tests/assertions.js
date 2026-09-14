@@ -26,8 +26,9 @@ import {
   sessionsBetween, sessionsIn, startOfDay, summarise, totalsByCard,
 } from "../history.js";
 import {
-  AMBIGUOUS_CENTS, NOISE_INITIAL, SILENCE_FLOOR, TUNING_DEADBAND_CENTS, WINDOW, analyse,
-  attackIndex, centsOff,
+  AMBIGUOUS_CENTS, NOISE_INITIAL, ONSET_RATIO, SILENCE_FLOOR, TUNING_DEADBAND_CENTS, WINDOW,
+  analyse, analyseOver, attackIndex, centsBetween, centsOff, createDetector, harmonicShare,
+  decodeWav, encodeWav, followLine, magnitudes, onsetBar,
   detectPitch, envelope, isOnset, midiFor, nextNoiseFloor, nextPeak, onsetThreshold, rms,
   tuningOffset,
 } from "../audio.js";
@@ -906,6 +907,199 @@ export function run(report) {
       );
     }
     eq("an envelope covers the window", envelope(new Float32Array(WINDOW)).length, WINDOW / 128);
+
+    // --- strikes, over time ----------------------------------------------
+    //
+    // The detector fed a performance: notes struck at given times and
+    // loudnesses, each ringing on (or damped when released) over a little
+    // room noise, handed over a frame at a time the way the page does.
+    // What is asserted is what the strike log depends on — that a strike is
+    // answered or explained, and not silently dropped.
+
+    {
+      const FRAME = 800; // 60 frames a second at 48kHz
+      const midiHz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+
+      /**
+       * @param {{midi?: number, knock?: boolean, at: number, loud?: number, off?: number,
+       *   rise?: number}[]} notes
+       *   times in seconds; `loud` scales the note, `off` damps it, `rise` is
+       *   how long its attack takes — a soft hammer is slow. A knock is
+       *   no note but 20ms of noise — a key going down before its hammer
+       *   reaches the string, or a damper landing.
+       * @param {number} seconds
+       * @param {{noise?: number, fps?: number}} [room] peak amplitude of the
+       *   noise under it all, and the display's frame rate
+       */
+      function perform(notes, seconds, { noise = 0.002, fps = 60 } = {}) {
+        const sig = new Float32Array(Math.ceil(seconds * SR));
+        const knocks = seeded(4);
+        for (const { midi, knock, at, loud = 1, off = Infinity, rise = 0.004 } of notes) {
+          if (knock) {
+            for (let i = Math.floor(at * SR); i < Math.min(sig.length, (at + 0.02) * SR); i++) {
+              sig[i] += 0.1 * loud * (knocks() * 2 - 1) * Math.exp(-(i / SR - at) / 0.006);
+            }
+            continue;
+          }
+          const hz = midiHz(midi);
+          for (let i = Math.floor(at * SR); i < sig.length; i++) {
+            const t = i / SR - at;
+            let env = loud * Math.exp(-t / 0.8) * Math.min(1, t / rise);
+            if (i / SR > off) env *= Math.exp(-(i / SR - off) / 0.06);
+            let s = 0;
+            for (let p = 1; p <= 6; p++) s += Math.sin(2 * Math.PI * hz * p * Math.sqrt(1 + 2e-4 * p * p) * t) / p;
+            sig[i] += 0.1 * env * s;
+          }
+        }
+        const rand = seeded(9);
+        for (let i = 0; i < sig.length; i++) sig[i] += (rand() - 0.5) * noise;
+
+        const detector = createDetector(SR);
+        const strikes = [];
+        for (let f = 0; ; f++) {
+          const end = Math.round(WINDOW + (f * SR) / fps);
+          if (end > sig.length) break;
+          const now = (end / SR) * 1000;
+          for (const s of detector.frame(sig.subarray(end - WINDOW, end), now).strikes) {
+            strikes.push({ ...s, now });
+          }
+        }
+        return strikes;
+      }
+      const kinds = (strikes) =>
+        strikes.map((s) => (s.kind === "heard" ? `heard ${midiFor(s.hz)}` : s.kind)).join(", ");
+
+      eq("the room on its own is never a strike", perform([], 2).length, 0);
+
+      const one = perform([{ midi: 60, at: 1 }], 3);
+      eq("a note over silence is one strike, the note", kinds(one), "heard 60");
+      ok("timed at its attack", Math.abs(one[0].at - 1000) < 20, `at ${one[0].at}`);
+      eq("and ringing on for two seconds adds nothing", one.length, 1);
+
+      eq("a note too quiet to answer is said to be", kinds(perform([{ midi: 60, at: 1, loud: 0.01 }], 2)),
+        "quiet");
+
+      eq("a note after the last has been let go is heard",
+        kinds(perform([{ midi: 60, at: 1, off: 1.5 }, { midi: 64, at: 1.9 }], 3)), "heard 60, heard 64");
+
+      // Struck as hard as the note still ringing, the next note enters the
+      // level a few frames at a time and never jumps by ONSET_RATIO in one.
+      // The spectrum is what sees it, and the rise in the spectrum is what
+      // reads it: the period finder alone called E4 over C4 C2.
+      for (const gap of [0.15, 0.25, 0.4, 0.6]) {
+        const line = perform([{ midi: 60, at: 1 }, { midi: 64, at: 1 + gap }], 3);
+        eq(`a note struck ${gap * 1000}ms into a ringing one is heard`, kinds(line), "heard 60, heard 64");
+      }
+      {
+        const line = perform([{ midi: 60, at: 1 }, { midi: 64, at: 1.4 }], 3);
+        ok("timed at its own attack, not the ringing note's", Math.abs(line[1].at - 1400) < 15,
+          `at ${line[1].at}`);
+        ok("and in tune", Math.abs(centsOff(line[1].hz)) < 10, `${centsOff(line[1].hz)}¢`);
+      }
+      eq("so is one a quarter as loud as the note it is struck over",
+        kinds(perform([{ midi: 60, at: 1 }, { midi: 64, at: 1.4, loud: 0.25 }], 3)), "heard 60, heard 64");
+      eq("and the same note struck again",
+        kinds(perform([{ midi: 60, at: 1 }, { midi: 60, at: 1.5 }], 3)), "heard 60, heard 60");
+      eq("and every note of a line played legato",
+        kinds(perform([60, 64, 62, 67].map((midi, i) => ({ midi, at: 1 + i * 0.35 })), 3.5)),
+        "heard 60, heard 64, heard 62, heard 67");
+      // A clean signal is not an easy one. With next to no noise, ordinary
+      // frames' flux falls to 2 or 3, and 2.5 times that is a note decaying:
+      // without a floor under it every note set off phantom strikes, read off
+      // a partial — F4 as C6.
+      eq("a line over a silent room is its notes and nothing else",
+        kinds(perform([60, 62, 64, 65].map((midi, i) => ({ midi, at: 0.5 + i * 0.3 })), 3, { noise: 0 })),
+        "heard 60, heard 62, heard 64, heard 65");
+      // What a real piano, recorded, taught.
+      eq("a display refreshing at 120Hz hears a legato line as well as one at 60",
+        kinds(perform([60, 64, 62, 67].map((midi, i) => ({ midi, at: 1 + i * 0.35 })), 3.5, { fps: 120 })),
+        "heard 60, heard 64, heard 62, heard 67");
+      // At 120Hz a slow attack's rise in the spectrum comes a little per frame,
+      // each frame's share under FLUX_MIN. Measured from 15ms back, it is one.
+      eq("a soft, slow strike over a ringing note is heard at 120Hz",
+        kinds(perform([{ midi: 60, at: 1 }, { midi: 64, at: 1.4, loud: 0.05, rise: 0.02 }], 3, { fps: 120 })),
+        "heard 60, heard 64");
+      {
+        // Played softly, a key and its hammer are heard a tenth of a second
+        // before the string.
+        const soft = perform([
+          { midi: 60, at: 1 },
+          { knock: true, at: 1.5, loud: 0.06 },
+          { midi: 64, at: 1.6, loud: 0.3 },
+        ], 3);
+        eq("a key heard before its string is one note, not two", kinds(soft), "heard 60, heard 64");
+        ok("timed from the string, not the key", Math.abs((soft[1]?.at ?? 0) - 1600) < 20, `at ${soft[1]?.at}`);
+      }
+      ok("a damper landing on a ringing note names no note",
+        !kinds(perform([{ midi: 60, at: 1 }, { knock: true, at: 1.5, loud: 0.15 }], 3)).includes("heard 60, heard"),
+        kinds(perform([{ midi: 60, at: 1 }, { knock: true, at: 1.5, loud: 0.15 }], 3)));
+      eq("a soft note on a quiet signal, barely over the room, is heard",
+        kinds(perform([{ midi: 60, at: 1, loud: 0.05 }, { midi: 64, at: 1.5, loud: 0.03 }], 3, { noise: 0.004 })),
+        "heard 60, heard 64");
+      eq("and of one falling through the bass clef",
+        kinds(perform([55, 52, 48, 45].map((midi, i) => ({ midi, at: 1 + i * 0.4 })), 3.5)),
+        "heard 55, heard 52, heard 48, heard 45");
+
+      // The pieces, on their own. E4's harmonics account for what E4 added;
+      // so do C2's, which include every one of them, and C2 is marked down
+      // for the harmonics it has that are not there.
+      {
+        const sig = new Float32Array(SR);
+        const add = (midi, from, loud) => {
+          const hz = midiHz(midi);
+          for (let i = Math.floor(from * SR); i < sig.length; i++) {
+            const t = i / SR - from;
+            let s = 0;
+            for (let p = 1; p <= 6; p++) s += Math.sin(2 * Math.PI * hz * p * t) / p;
+            sig[i] += 0.1 * loud * Math.exp(-t / 0.8) * s;
+          }
+        };
+        add(60, 0, 1);
+        add(64, 0.5, 1);
+        const at = (s) => sig.slice(Math.round(s * SR) - WINDOW, Math.round(s * SR));
+        const before = at(0.49);
+        const now = at(0.62);
+        const over = analyseOver(now, before, SR);
+        ok("a note struck over another is read against what it added",
+          Math.abs(centsBetween(over.hz, midiHz(64))) < 10, `${over.hz.toFixed(1)}Hz`);
+        ok("where the period finder alone hears the chord's common period",
+          midiFor(analyse(now, SR).hz) !== 64, `${analyse(now, SR).hz.toFixed(1)}Hz`);
+        const rise = magnitudes(now).map((m, i) => Math.max(0, m - magnitudes(before)[i]));
+        ok("and the true note accounts for more of the rise than its subharmonic",
+          harmonicShare(rise, midiHz(64), SR) > harmonicShare(rise, midiHz(64) / 5, SR));
+      }
+
+      // A debug recording: the audio, with the log in a chunk of its own.
+      {
+        const pcm = Int16Array.from({ length: 1000 }, (_, i) => Math.round(Math.sin(i / 10) * 20000));
+        const file = decodeWav(encodeWav(pcm, 44100, JSON.stringify({ frames: [[1, 2]], note: "E4 é" })));
+        eq("a recording keeps its sample rate", file.samples.length === 1000 && file.sampleRate, 44100);
+        near("and its samples", file.samples[123], pcm[123] / 32768, 1e-6);
+        eq("and carries its log", JSON.parse(file.log).note, "E4 é");
+        eq("an odd-length log is padded and still read back",
+          JSON.parse(decodeWav(encodeWav(pcm, 48000, '{"x":"ab"}')).log).x, "ab");
+        eq("a recording with no log has an empty one", decodeWav(encodeWav(pcm, 48000)).log, "");
+      }
+
+      // Following a known line round and round, for testing by ear.
+      {
+        const line = [60, 62, 64, 65];
+        const marks = (index, midi) =>
+          followLine(line, index, midi).marks.map((m) => `${m.at}:${m.result}`).join(" ");
+        eq("the note expected is heard", marks(0, 60), "0:heard");
+        eq("and the line moves on", followLine(line, 0, 60).index, 1);
+        eq("the note after it means the one expected was missed", marks(1, 64), "1:missed 2:heard");
+        eq("and moves on past both", followLine(line, 1, 64).index, 3);
+        eq("anything else was heard wrong", marks(2, 67), "2:wrong");
+        eq("and does not hold the line up", followLine(line, 2, 67).index, 3);
+        eq("the last note leads back to the first", followLine(line, 3, 65).index, 0);
+        eq("and a miss there wraps too", marks(3, 60), "3:missed 0:heard");
+      }
+
+      near("the bar is the room's threshold with nothing ringing", onsetBar(0, NOISE_INITIAL),
+        NOISE_INITIAL * 3);
+      near("and a step over what is", onsetBar(0.5, 0), 0.5 * ONSET_RATIO);
+    }
 
     // --- picking ---------------------------------------------------------
 

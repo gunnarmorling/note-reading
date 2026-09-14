@@ -34,6 +34,8 @@ check("the staff is sized", (dom.el("staff").getAttribute("viewBox") ?? "").spli
 check("the record invites a first answer", text("stats").includes("Press a letter"), text("stats"));
 check("the tabs are built", dom.el("tabstrip").children.length === 4);
 check("the player has a name", text("player-name").length > 0);
+check("nothing is listening, so the strike log is hidden", dom.el("listen").hidden);
+check("and there is nothing to test with", dom.el("check").disabled && dom.el("checking").hidden);
 check("the menus start shut", dom.el("name-menu").hidden && dom.el("play-menu").hidden);
 check("the cheat sheet says what is in play", text("cheat-count").includes("in play"), text("cheat-count"));
 
@@ -173,5 +175,5 @@ check("the session was saved", Object.keys(dom.store).some((k) => k.includes("cu
   Object.keys(dom.store).join(", "));
 
 for (const line of problems) console.log(`FAIL ${line}`);
-console.log(`${28 - problems.length} passed, ${problems.length} failed  (app boot)`);
+console.log(`${30 - problems.length} passed, ${problems.length} failed  (app boot)`);
 process.exit(problems.length === 0 ? 0 : 1);

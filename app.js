@@ -1,5 +1,5 @@
 import {
-  LETTERS, candidateIds, cardId, cardMode, cardPitch, fromDiatonic, isUpper, label,
+  LETTERS, candidateIds, cardId, cardMode, cardPitch, diatonic, fromDiatonic, isUpper, label,
   nearestWithLetter, notesFor, toMidi,
 } from "./notes.js";
 
@@ -55,6 +55,21 @@ const state = {
    *   miss: number | null} | null}
    */
   tuning: null,
+  /**
+   * Testing against a known line: its notes, the position expected next,
+   * what each position came out as this time round, and the running tally
+   * per position.
+   * @type {{line: number[], index: number, round: (string | null)[],
+   *   tally: {heard: number, missed: number, wrong: number}[]} | null}
+   */
+  check: null,
+  /**
+   * A debug recording in progress: when it started, and everything logged
+   * since — each frame the detector ran, and each thing it or the drill did.
+   * @type {{started: number, startedIso: string, frames: number[][],
+   *   events: Record<string, unknown>[]} | null}
+   */
+  debug: null,
   /** @type {SVGElement | null} */
   head: null,
   /** Scored and missed: the note stays put until the right answer comes. */
@@ -119,12 +134,25 @@ function collectElements() {
     micLevel: need("mic-level"),
     micFill: need("mic-fill"),
     micMark: need("mic-mark"),
+    listen: need("listen"),
+    listenFill: need("listen-fill"),
+    listenMark: need("listen-mark"),
+    strikes: need("strikes"),
     tune: need("tune"),
     tuning: need("tuning"),
     tuningPrompt: need("tuning-prompt"),
     tuningResult: need("tuning-result"),
     tuningStop: need("tuning-stop"),
     tuningKeys: need("tuning-keys"),
+    check: need("check"),
+    checking: need("checking"),
+    checkingPrompt: need("checking-prompt"),
+    checkingResult: need("checking-result"),
+    checkingStop: need("checking-stop"),
+    debugRecord: need("debug-record"),
+    debugBar: need("debug-bar"),
+    debugTime: need("debug-time"),
+    debugSave: need("debug-save"),
     playerMenu: need("player-menu"),
     playerButton: need("player-button"),
     playerName: need("player-name"),
@@ -225,6 +253,7 @@ function paintSources() {
  * there are three of them now.
  */
 function stopListening() {
+  if (state.debug) saveDebug();
   if (audio.listening()) audio.stop();
   setMicStatus({ listening: false, error: null });
 }
@@ -234,7 +263,7 @@ function startListening() {
   ui.micStatus.textContent = "asking for permission…";
   ui.micStatus.classList.remove("is-off");
   audio.start(
-    heardNote,
+    heardStrike,
     (status) => {
       setMicStatus(status);
       if (status.listening) setMode("played");
@@ -366,6 +395,13 @@ function fitStaff() {
 }
 
 function nextTrial() {
+  // The test line stays on screen whatever else changes under it.
+  if (state.check) {
+    state.drawn = renderLine(ui.svg, state.check.line, clefNames());
+    state.check.round = state.check.line.map(() => null);
+    markLive(state.drawn, state.check.index);
+    return;
+  }
   const ids = eligibleIds();
   if (ids.length === 0) {
     // The clef and the limits have nothing in common — the bass clef with
@@ -384,6 +420,7 @@ function nextTrial() {
   }
 
   state.line = chooseLine(state.cards, ids, state.trial, state.settings.sequence).map(cardPitch);
+  debugLog("line", { notes: state.line.map(label) });
   state.drawn = renderLine(ui.svg, state.line, clefNames());
   state.retrying = false;
   // Nothing is accepted until the line is painted, so that an answer typed
@@ -472,6 +509,13 @@ function resolve(correct, answerLabel, { at = performance.now(), mode = "typed" 
   const latencyMs = first ? NaN : at - state.startedAt;
   const id = cardId(state.current, mode);
 
+  debugLog("answer", {
+    expected: label(state.current),
+    given: answerLabel,
+    correct,
+    latencyMs: Number.isFinite(latencyMs) ? Math.round(latencyMs) : null,
+    attackAt: Number(at.toFixed(1)),
+  });
   state.cards.set(id, record(store.cardFor(state.cards, id), { correct, latencyMs, trial: state.trial }));
   state.trial += 1;
   state.totals.answered += 1;
@@ -524,6 +568,7 @@ function tryAgain(dn, answerLabel) {
  */
 function correctionAttempt(correct, answerLabel) {
   if (state.current === null) return;
+  debugLog("correction", { expected: label(state.current), given: answerLabel, correct });
   const name = label(state.current);
   state.head?.classList.remove(correct ? "is-wrong" : "is-correct");
   state.head?.classList.add(correct ? "is-correct" : "is-wrong");
@@ -540,7 +585,7 @@ function correctionAttempt(correct, answerLabel) {
 
 /** @param {string} letter */
 function answerLetter(letter) {
-  if (!state.accepting || state.current === null || state.tuning) return;
+  if (!state.accepting || state.current === null || state.tuning || state.check) return;
   // Not an answer on the playing deck. A letter cannot say which octave, and
   // an answer is recorded by how it was given, so a letter typed here used to
   // be scored, advance the note, and land in the naming deck — out of the
@@ -567,7 +612,7 @@ function answerLetter(letter) {
  * @param {number} [at]
  */
 function answerMidi(midiNote, at) {
-  if (!state.accepting || state.current === null || state.tuning) return;
+  if (!state.accepting || state.current === null || state.tuning || state.check) return;
   // From an instrument we can check the octave too, which is the skill that
   // actually matters: staff position to the key under your finger.
   resolve(midiNote === toMidi(state.current), midiNoteName(midiNote), { at, mode: "played" });
@@ -699,14 +744,80 @@ async function uploadRecord(file) {
 
 // --- the microphone -------------------------------------------------------
 
+/** How many strikes the log keeps on screen. */
+const STRIKES_SHOWN = 6;
+
+/**
+ * Put a strike at the head of the log under the staff.
+ *
+ * Every strike the microphone noticed goes in, answered or not — which is
+ * the point of it. A note the drill never registered looks, from the piano,
+ * exactly like a note it did not hear, and the reasons are different and
+ * want different remedies: too quiet wants the microphone closer, no attack
+ * wants the last note released first, too soon wants a moment's patience.
+ *
+ * @param {string} text
+ * @param {"is-right" | "is-wrong" | "is-lost" | ""} kind
+ * @param {string} detail what the short text stands for, on hover
+ */
+function logStrike(text, kind, detail) {
+  const item = document.createElement("li");
+  item.className = `strike ${kind}`.trim();
+  item.textContent = text;
+  item.setAttribute("title", detail);
+  ui.strikes.replaceChildren(item, ...[...ui.strikes.children].slice(0, STRIKES_SHOWN - 1));
+}
+
+/**
+ * Something struck, as the microphone saw it. A strike it could not name is
+ * only logged; a note is also shown in the menu's readout, and answers the
+ * drill if the drill is asking.
+ * @param {import("./audio.js").Strike} strike
+ */
+function heardStrike(strike) {
+  if (strike.kind === "heard") {
+    debugLog("strike", {
+      ...strike,
+      midi: audio.midiFor(strike.hz, state.settings.tuningCents),
+      name: midiNoteName(audio.midiFor(strike.hz, state.settings.tuningCents)),
+      cents: Number(audio.centsOff(strike.hz, state.settings.tuningCents).toFixed(1)),
+    });
+  } else {
+    debugLog("strike", strike);
+  }
+  switch (strike.kind) {
+    case "heard":
+      heardNote(strike);
+      return;
+    case "quiet":
+      logStrike("too quiet", "is-lost",
+        `Reached ${Math.round((strike.level / strike.threshold) * 100)}% of the level a note has to clear.`);
+      return;
+    case "gradual":
+      logStrike("no attack", "is-lost",
+        `Loud enough, rising ×${strike.rise.toFixed(2)}, but never in one step — ` +
+          "struck while the note before was still ringing?");
+      return;
+    case "overtaken":
+      logStrike("overtaken", "is-lost", "The next note came before this one could be named.");
+      return;
+    case "unclear":
+      logStrike("unclear", "is-lost",
+        `Clearest reading ${strike.clarity.toFixed(2)}; a note needs ${audio.ACCEPT_CLARITY.toFixed(2)}.`);
+      return;
+    case "unsteady":
+      logStrike("unsteady", "is-lost", "Clear readings that disagreed: two notes sounding at once?");
+      return;
+  }
+}
+
 /**
  * A note heard on the microphone. Reported whether or not the drill is
  * accepting one, so that the readout confirms it is hearing the piano before
  * you have any reason to trust it.
- * @param {number} midiNote
- * @param {number} at
+ * @param {{hz: number, clarity: number, at: number, over: boolean}} heard
  */
-function heardNote({ hz, clarity, at }) {
+function heardNote({ hz, clarity, at, over }) {
   const cents = audio.centsOff(hz, state.settings.tuningCents);
   const note = audio.midiFor(hz, state.settings.tuningCents);
   const ambiguous = Math.abs(cents) > audio.AMBIGUOUS_CENTS;
@@ -715,14 +826,115 @@ function heardNote({ hz, clarity, at }) {
     `clarity ${clarity.toFixed(2)}.` +
     (ambiguous ? " Too far between two notes to call — play it again." : "");
 
+  const name = midiNoteName(note);
   // Tuning wants the raw deviation: measuring it is the whole point there,
   // and it has its own idea of how far off is too far.
   if (state.tuning) {
+    logStrike(name, "", "Heard while tuning.");
     tuneWith(hz);
     return;
   }
-  if (ambiguous) return;
+  if (ambiguous) {
+    logStrike("between notes", "is-lost",
+      `${name} ${cents >= 0 ? "+" : "−"}${Math.abs(Math.round(cents))}¢: too near halfway to call.`);
+    return;
+  }
+  // The test line takes what the drill would: a note too near halfway to
+  // call is not counted, and so shows up as the note missed.
+  if (state.check) {
+    checkWith(note, name);
+    return;
+  }
+  if (!state.accepting || state.current === null) {
+    // Most often the pause after the last note of a line, before the next
+    // line is up — heard perfectly well, and answering nothing.
+    logStrike(`${name} early`, "is-lost", "Heard, but before there was a note to answer.");
+    return;
+  }
+  const right = note === toMidi(state.current);
+  logStrike(name, right ? "is-right" : "is-wrong",
+    over
+      ? `Read against the note still ringing: ${Math.round(clarity * 100)}% of what it added.`
+      : `Clarity ${clarity.toFixed(2)}.`);
   answerMidi(note, at);
+}
+
+// --- recording for debugging ----------------------------------------------
+
+/**
+ * Note something in the debug recording's log, if one is being made. Times
+ * are performance.now(), which each logged frame pairs with the audio
+ * context's clock, and that clock with the samples in the file.
+ * @param {string} type
+ * @param {Record<string, unknown>} data
+ */
+function debugLog(type, data) {
+  if (!state.debug) return;
+  state.debug.events.push({ t: Number(performance.now().toFixed(1)), type, ...data });
+}
+
+/**
+ * Record the microphone, and log what the drill made of it, until stopped.
+ * For sharing: what a detector did with a real piano in a real room is not
+ * something synthesised strings can say.
+ */
+async function startDebug() {
+  if (state.debug || !audio.listening()) return;
+  ui.debugRecord.disabled = true;
+  let started = false;
+  try {
+    started = await audio.startCapture(() => {
+      // Five minutes is plenty, and a lot of memory: save and stop.
+      if (state.debug) saveDebug();
+    });
+  } catch (err) {
+    ui.micStatus.textContent = `Could not record: ${err instanceof Error ? err.message : err}`;
+  }
+  if (started) {
+    state.debug = { started: performance.now(), startedIso: new Date().toISOString(), frames: [], events: [] };
+    debugLog("start", { mode: state.mode, line: state.line.map(label), index: state.index });
+    showMenu(ui.playMenu, false);
+  }
+  paintDebug();
+}
+
+/** Stop recording, and save the audio with the log inside it as one WAV file. */
+function saveDebug() {
+  const d = state.debug;
+  const taken = audio.stopCapture();
+  state.debug = null;
+  paintDebug();
+  if (!d || !taken) return;
+  const { tuningCents, clefs, ledgers, lowest, highest, sequence } = state.settings;
+  const log = {
+    format: "note-reading-debug/1",
+    started: d.startedIso,
+    sampleRate: taken.sampleRate,
+    // The context's sample frame the file's first sample was; a frame's
+    // contextTime × sampleRate − firstFrame is the sample its window ended on.
+    firstFrame: taken.firstFrame,
+    window: audio.WINDOW,
+    device: ui.micStatus.textContent,
+    userAgent: navigator.userAgent,
+    settings: { mode: state.mode, tuningCents, clefs, ledgers, lowest: label(lowest), highest: label(highest), sequence },
+    frameColumns: ["now", "contextTime", "level", "bar", "flux"],
+    frames: d.frames,
+    events: d.events,
+  };
+  const wav = audio.encodeWav(taken.samples, taken.sampleRate, JSON.stringify(log));
+  const url = URL.createObjectURL(new Blob([wav], { type: "audio/wav" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `note-reading-debug-${d.startedIso.slice(0, 19).replaceAll(":", "-")}.wav`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function paintDebug() {
+  const on = Boolean(state.debug);
+  ui.debugBar.hidden = !on;
+  ui.debugRecord.disabled = on || !audio.listening();
+  if (!on) ui.debugTime.textContent = "0:00";
 }
 
 // --- tuning ---------------------------------------------------------------
@@ -741,6 +953,7 @@ const TUNING_READINGS = 3;
 const TUNING_TOLERANCE_CENTS = 250;
 
 function startTuning() {
+  if (state.check) stopCheck(false);
   const pitches = eligibleIds().map(cardPitch);
   if (pitches.length === 0) return;
   const targets = Array.from({ length: TUNING_TARGETS }, (_, i) =>
@@ -797,6 +1010,113 @@ function stopTuning() {
   nextTrial();
 }
 
+// --- testing with four notes ----------------------------------------------
+
+/**
+ * The line to test with: four steps up from middle C, under one hand's five
+ * fingers, so it can be played legato round and round with nothing to read.
+ */
+const CHECK_LINE = ["C", "D", "E", "F"].map((letter) => diatonic(letter, 4));
+
+/**
+ * Play a line you know, over and over, and see what the microphone made of
+ * each note. Nothing is scored or recorded: the drill stops while this runs,
+ * the way it does for tuning, since the question is about the detector and
+ * not about reading.
+ */
+function startCheck() {
+  if (state.tuning) {
+    state.tuning = null;
+    paintTuning();
+  }
+  state.check = {
+    line: CHECK_LINE,
+    index: 0,
+    round: CHECK_LINE.map(() => null),
+    tally: CHECK_LINE.map(() => ({ heard: 0, missed: 0, wrong: 0 })),
+  };
+  state.accepting = false;
+  state.retrying = false;
+  state.drawn = renderLine(ui.svg, CHECK_LINE, clefNames());
+  ui.verdict.className = "verdict";
+  ui.verdict.textContent = "";
+  releaseKeys();
+  ui.strikes.replaceChildren();
+  showMenu(ui.playMenu, false);
+  debugLog("line", { notes: CHECK_LINE.map(label), test: true });
+  paintCheck();
+}
+
+/**
+ * A note heard during the test.
+ * @param {number} midiNote
+ * @param {string} name
+ */
+function checkWith(midiNote, name) {
+  const c = state.check;
+  if (!c || !state.drawn) return;
+  const heads = state.drawn.heads;
+  const { marks, index } = audio.followLine(c.line.map(toMidi), c.index, midiNote);
+  debugLog("check", {
+    heard: name,
+    marks: marks.map((m) => ({ note: label(c.line[m.at]), result: m.result })),
+  });
+  const classes = { heard: "is-correct", missed: "is-missed", wrong: "is-wrong" };
+  for (const { at, result } of marks) {
+    // Back to the first note is the start of the next time round: clear the
+    // last round off the staff, but only now, so it stays readable until you
+    // have moved on from it — and not the note marked a moment ago, when a
+    // miss at the end of the round and the first note arrive together.
+    if (at === 0 && c.round.some((r) => r !== null)) {
+      heads.forEach((head, i) => {
+        if (marks.some((m) => m.at === i && m.at !== 0)) return;
+        head.classList.remove(...Object.values(classes));
+        c.round[i] = null;
+      });
+    }
+    c.round[at] = result;
+    c.tally[at][result] += 1;
+    heads[at].classList.add(classes[result]);
+  }
+  logStrike(name, marks.at(-1)?.result === "heard" ? "is-right" : "is-wrong",
+    marks.length > 1 ? `Heard — and ${label(c.line[marks[0].at])} before it was not.` : "Heard.");
+  c.index = index;
+  markLive(state.drawn, index);
+  paintCheck();
+}
+
+/** @param {boolean} [resume] whether to go back to the drill */
+function stopCheck(resume = true) {
+  state.check = null;
+  paintCheck();
+  if (resume) nextTrial();
+}
+
+function paintCheck() {
+  const c = state.check;
+  ui.checking.hidden = !c;
+  ui.check.disabled = Boolean(c) || !audio.listening();
+  if (!c) return;
+  ui.checkingPrompt.textContent =
+    `Play ${c.line.map(label).join(" ")} over and over, legato if you like. ` +
+    "Nothing is recorded.";
+  const sum = c.tally.reduce(
+    (a, t) => ({ heard: a.heard + t.heard, missed: a.missed + t.missed, wrong: a.wrong + t.wrong }),
+    { heard: 0, missed: 0, wrong: 0 },
+  );
+  const played = sum.heard + sum.missed + sum.wrong;
+  ui.checkingResult.textContent =
+    played === 0
+      ? "Waiting for the first note."
+      : `${sum.heard} of ${played} heard · ${sum.missed} missed · ${sum.wrong} wrong — ` +
+        c.line
+          .map((dn, i) => {
+            const t = c.tally[i];
+            return `${label(dn)} ${t.heard}/${t.heard + t.missed + t.wrong}`;
+          })
+          .join(" · ");
+}
+
 /** @param {{cents: number, measured: number, spread: number}} [done] */
 function paintTuning(done) {
   const t = state.tuning;
@@ -851,15 +1171,35 @@ function meterPercent(level) {
 }
 
 /**
- * The live level, and the mark it has to cross to count as a note. The mark
- * moves: the threshold follows the room, so where the bar is drawn is the
- * only honest way to see what the drill is actually waiting for.
+ * The live level, and the mark a strike has to cross to count as a note.
+ *
+ * The mark moves, and more than it used to: it was the room's threshold,
+ * which follows the room slowly, and it is now whatever a strike actually has
+ * to clear — which just after a note is a step above that note, sinking back
+ * as it decays. So a note played before the mark has come back down is one
+ * the meter says will not register.
+ *
+ * Drawn twice: in the menu, where the microphone is set up, and under the
+ * staff, where it is wanted while playing. A popover shuts the moment you
+ * click away from it, so a meter only in the menu is invisible exactly when
+ * it matters.
  * @param {number} level
- * @param {number} threshold
+ * @param {number} bar
+ * @param {import("./audio.js").FrameDetail} [frame]
  */
-function showMicLevel(level, threshold) {
-  ui.micFill.style.width = `${meterPercent(level)}%`;
-  ui.micMark.style.left = `${meterPercent(threshold)}%`;
+function showMicLevel(level, bar, frame) {
+  if (state.debug && frame) {
+    const round = (x, places) => Number(x.toFixed(places));
+    state.debug.frames.push([
+      round(frame.now, 1), round(frame.contextTime, 5), round(level, 5), round(bar, 5), round(frame.flux, 1),
+    ]);
+    const seconds = Math.floor((frame.now - state.debug.started) / 1000);
+    ui.debugTime.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  }
+  for (const [fill, mark] of [[ui.micFill, ui.micMark], [ui.listenFill, ui.listenMark]]) {
+    fill.style.width = `${meterPercent(level)}%`;
+    mark.style.left = `${meterPercent(bar)}%`;
+  }
 }
 
 /** @param {import("./audio.js").MicStatus} status */
@@ -871,11 +1211,22 @@ function setMicStatus({ listening, error, device, sampleRate }) {
     error ?? (listening ? `${device} at ${sampleRate}Hz${tuned}` : "off");
   ui.micStatus.classList.toggle("is-off", !listening && !error);
   ui.micLevel.hidden = !listening;
-  if (!listening) ui.micFill.style.width = "0";
+  ui.listen.hidden = !listening;
+  if (!listening) {
+    ui.micFill.style.width = "0";
+    ui.listenFill.style.width = "0";
+    ui.strikes.replaceChildren();
+  }
   // Turning the microphone off mid-tuning has to put the drill back, not just
   // hide the panel and leave the trial on screen refusing answers.
   if (!listening && state.tuning) stopTuning();
   else paintTuning();
+  if (!listening && state.check) stopCheck();
+  else paintCheck();
+  // The microphone gone from under a recording takes the recording with it;
+  // closing it on purpose saves first, in stopListening.
+  if (!listening && state.debug) state.debug = null;
+  paintDebug();
   // Losing the microphone mid-session drops you back to naming, because
   // there is no longer anything to play into.
   if (!listening && !state.midiDevice) setMode("typed");
@@ -1300,6 +1651,11 @@ function init() {
   ui.tune.addEventListener("click", startTuning);
   ui.tuningStop.addEventListener("click", stopTuning);
   paintTuning();
+  ui.check.addEventListener("click", startCheck);
+  ui.debugRecord.addEventListener("click", startDebug);
+  ui.debugSave.addEventListener("click", saveDebug);
+  ui.checkingStop.addEventListener("click", () => stopCheck());
+  paintCheck();
   showCheatSheet(state.settings.cheat);
 
   ui.reset.addEventListener("click", () => {
