@@ -257,7 +257,7 @@ occur in only three places on a grand staff — above the treble staff, below
 the bass staff, and the one line middle C sits on, which is one ledger below
 the treble staff and nothing to do with the bass.
 
-**The cheat sheet makes one exception**, because the page does: where the
+**The overlap is the one exception**, because the page makes it: where the
 clefs' reaches overlap, piano music engraves a note on whichever staff suits
 the hand taking it. `sharedNotes(clefNames, ledgers)` is that overlap —
 nothing with the staves alone, middle C at one ledger line, A3 up to E4 at
@@ -265,7 +265,12 @@ two — and with both clefs in play the reference draws every one of them
 twice, in one column under one name. Drawing a single spelling left a staff's
 own ledger lines unused, lines you will certainly meet, and made the gap
 between the staves read as a mistake rather than as the place the two frames
-join. The drill still asks once; a card is a pitch.
+join.
+
+The drill draws either spelling, a coin flip per note (`staffFor`): always
+putting middle C under the treble staff meant the ledger over the bass staff
+was never read. The staff is not recorded — a card is a pitch, wherever it
+was drawn.
 
 At two ledger lines this has a consequence worth knowing: the staves'
 extensions land on the same lines. The line at y=60 is E4 read against the

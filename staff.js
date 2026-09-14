@@ -289,14 +289,16 @@ export function lineXs(count) {
  * @param {SVGElement} svg
  * @param {number[]} dns in reading order
  * @param {string[]} [clefNames]
+ * @param {string[]} [staves] which staff each note goes on, for a note both
+ *   can write; by default the one its pitch puts it on
  * @returns {{heads: SVGElement[], cursor: SVGElement | null}}
  */
-export function renderLine(svg, dns, clefNames = BOTH_CLEFS) {
+export function renderLine(svg, dns, clefNames = BOTH_CLEFS, staves = dns.map((dn) => clefFor(dn, clefNames))) {
   svg.replaceChildren();
   drawSystem(svg, STAFF_RIGHT, clefNames);
 
   const xs = lineXs(dns.length);
-  const ys = dns.map((dn) => grandY(dn, clefNames));
+  const ys = dns.map((dn, i) => grandY(dn, [staves[i]]));
 
   /** @type {SVGElement | null} */
   let cursor = null;
@@ -320,7 +322,7 @@ export function renderLine(svg, dns, clefNames = BOTH_CLEFS) {
   const heads = dns.map((dn, i) => {
     const x = xs[i];
     const y = ys[i];
-    for (const ly of ledgerLines(y, clefFor(dn, clefNames))) {
+    for (const ly of ledgerLines(y, staves[i])) {
       svg.appendChild(
         line(ly, LEDGER_THICKNESS, x - LEDGER_EXTENSION, x + NOTEHEAD_WIDTH + LEDGER_EXTENSION),
       );

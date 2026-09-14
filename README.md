@@ -192,7 +192,8 @@ remembered.
 
 Middle C appears twice, in one column: piano music writes it either below the
 treble staff or above the bass, depending on which hand takes it, and both are
-lines you will meet.
+lines you will meet. The drill draws it on either, at random — and likewise
+A3 to E4 at two ledger lines.
 
 **Answers you look up still count.** A note read off the cheat sheet comes
 back fast and correct, which the scheduler takes for fluency and stops showing

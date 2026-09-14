@@ -1,6 +1,6 @@
 import {
   LETTERS, candidateIds, cardId, cardMode, cardPitch, diatonic, fromDiatonic, isUpper, label,
-  nearestWithLetter, notesFor, toMidi,
+  nearestWithLetter, notesFor, staffFor, toMidi,
 } from "./notes.js";
 
 import { TARGET_MS, isTimed, median, record } from "./scheduler.js";
@@ -421,8 +421,9 @@ function nextTrial() {
   }
 
   state.line = chooseLine(state.cards, ids, state.trial, state.settings.sequence).map(cardPitch);
-  debugLog("line", { notes: state.line.map(label) });
-  state.drawn = renderLine(ui.svg, state.line, clefNames());
+  const staves = state.line.map((dn) => staffFor(dn, clefNames(), state.settings.ledgers));
+  debugLog("line", { notes: state.line.map(label), staves });
+  state.drawn = renderLine(ui.svg, state.line, clefNames(), staves);
   state.retrying = false;
   // Nothing is accepted until the line is painted, so that an answer typed
   // into the gap cannot land on a note that is not yet on screen.

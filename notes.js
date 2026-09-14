@@ -154,8 +154,8 @@ export function isUpper(dn) {
  *
  * Where the clefs' reaches overlap, a pitch can be engraved on either staff —
  * middle C alone at one ledger line, A3 up to E4 at two — and piano music
- * picks whichever suits the hand taking it. The drill draws one of them,
- * because a card is a pitch and a position has to mean one thing; the cheat
+ * picks whichever suits the hand taking it. The drill draws either, a coin
+ * flip each time (see `staffFor`), and the card stays the pitch; the cheat
  * sheet draws both, because the page you will read does.
  *
  * @param {string[]} clefNames
@@ -166,6 +166,26 @@ export function sharedNotes(clefNames, ledgers) {
   if (clefNames.length < 2) return [];
   const reaches = clefNames.map((name) => new Set(rangeFor(CLEFS[name], ledgers)));
   return [...reaches[0]].filter((dn) => reaches.every((r) => r.has(dn))).sort((a, b) => a - b);
+}
+
+/**
+ * Which staff to draw a note on this time.
+ *
+ * A note only one staff reaches goes on that staff. One both reach is a coin
+ * flip: always putting middle C under the treble staff meant the ledger line
+ * over the bass staff was never read, and that is the one a left hand meets.
+ * Per note rather than per line, so a line through the overlap can cross
+ * between the staves — which piano music does too.
+ *
+ * @param {number} dn
+ * @param {string[]} clefNames
+ * @param {number} ledgers
+ * @param {() => number} [rand]
+ * @returns {string} a clef name
+ */
+export function staffFor(dn, clefNames, ledgers, rand = Math.random) {
+  if (!sharedNotes(clefNames, ledgers).includes(dn)) return clefFor(dn, clefNames);
+  return rand() < 0.5 ? "bass" : "treble";
 }
 
 /**

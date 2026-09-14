@@ -11,7 +11,7 @@ import {
 import {
   BOTH_CLEFS, CLEFS, GRAND_BOTTOM_Y, LETTERS, MAX_LEDGERS, MIDDLE_C_Y, MODES, candidateIds,
   cardId, cardMode, cardPitch, clefFor, diatonic, everyNote, fromDiatonic, grandY, isUpper,
-  label, nearestWithLetter, notesFor, rangeFor, sharedNotes, systemLines, toMidi,
+  label, nearestWithLetter, notesFor, rangeFor, sharedNotes, staffFor, systemLines, toMidi,
 } from "../notes.js";
 import {
   GLYPH, NOTEHEAD_WIDTH, SCALE_NOTE_RIGHT, SCALE_WIDTH, grandScale, hasBlackKeyAbove, inkExtent,
@@ -1242,6 +1242,28 @@ export function run(report) {
         Number(drawn.cursor?.getAttribute("x")) + Number(drawn.cursor?.getAttribute("width")) / 2,
         lineXs(3)[2] + NOTEHEAD_WIDTH / 2);
       eq("a single note has no cursor", renderLine(svg, [dns[0]], BOTH_CLEFS).cursor, null);
+
+      const c4 = diatonic("C", 4);
+      const headY = (d) => Number(d.heads[0].getAttribute("transform").split(" ")[1].replace(")", ""));
+      eq("middle C can be drawn over the bass staff",
+        headY(renderLine(svg, [c4], BOTH_CLEFS, ["bass"])), grandY(c4, ["bass"]));
+      eq("with its ledger line there, not under the treble",
+        svg.children.filter((c) => c.getAttribute("class") === "rule" && c.tagName !== "path")
+          .some((c) => Math.abs(Number(c.getAttribute("y")) + Number(c.getAttribute("height")) / 2 - grandY(c4, ["bass"])) < 0.01),
+        true);
+    }
+
+    // --- which staff a note is drawn on ------------------------------------
+
+    {
+      const c4 = diatonic("C", 4);
+      eq("middle C at one ledger: heads is bass", staffFor(c4, BOTH_CLEFS, 1, () => 0.2), "bass");
+      eq("and tails is treble", staffFor(c4, BOTH_CLEFS, 1, () => 0.7), "treble");
+      eq("a note only one staff reaches ignores the coin", staffFor(diatonic("D", 4), BOTH_CLEFS, 1, () => 0.2),
+        "treble");
+      eq("with no ledgers nothing is shared", staffFor(c4 - 1, BOTH_CLEFS, 0, () => 0.7), "bass");
+      eq("at two ledgers E4 can go over the bass", staffFor(diatonic("E", 4), BOTH_CLEFS, 2, () => 0.2), "bass");
+      eq("one clef in play is always that clef", staffFor(c4, ["bass"], 2, () => 0.7), "bass");
     }
 
     // --- median ----------------------------------------------------------
